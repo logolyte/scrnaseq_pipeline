@@ -1,0 +1,13 @@
+{
+    "input": "samplesheet.csv",
+    "outdir": "/scratch/lsundin/lmx1b/starsolo_output_ex50pas/downstream_v5/",
+    "species": "mouse",
+    "ambient_correction": "decontx",
+    "ambient_corrected_integration": true,
+    "integration_methods": "pca",
+    "normalization_method": "log1p",
+    "neighbors_n_pcs": 30,
+    "skip_liana": true,
+    "de_methods": "",
+    "cell_cycle_scoring": false
+}
