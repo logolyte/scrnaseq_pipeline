@@ -3,7 +3,7 @@
     "outdir": "/scratch/lsundin/lmx1b/starsolo_output_ex50pas/downstream_v5/",
     "species": "mouse",
     "ambient_correction": "decontx",
-    "ambient_corrected_integration": true,
+    "use_ambient_corrected_counts": true,
     "integration_methods": "pca",
     "normalization_method": "log1p",
     "neighbors_n_pcs": 30,
