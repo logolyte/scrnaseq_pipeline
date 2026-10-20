@@ -9,5 +9,6 @@
     "neighbors_n_pcs": 30,
     "skip_liana": true,
     "de_methods": "",
-    "cell_cycle_scoring": false
+    "cell_cycle_scoring": false,
+    "doublet_removal": true
 }
