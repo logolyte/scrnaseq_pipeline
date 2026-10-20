@@ -45,8 +45,25 @@ SYMBOL_COL = "gene_symbol"
 BATCH_COL = "sample"
 DONOR_COL = "sample"
 
+# Only a 200-gene floor per nucleus; every other cell and gene filter in
+# SCANPY_FILTER is set to its "off" value explicitly, so schema default
+# changes cannot re-enable it.
+QC = {
+    "min_genes": 200,
+    "min_counts_cell": 0,
+    "min_cells": 0,
+    "min_counts_gene": 0,
+    "max_mito_percentage": 100,
+    "min_ribo_percentage": 0,
+    "max_hb_percentage": 100,
+    "log1p_total_counts_nmads": 0,
+    "log1p_n_genes_by_counts_nmads": 0,
+    "pct_counts_in_top_20_genes_nmads": 0,
+    "pct_counts_mt_nmads": 0,
+}
+
 COLUMNS = ["sample", "unfiltered", "symbol_col", "batch_col", "donor_col",
-           "expected_cells"]
+           "expected_cells"] + list(QC)
 
 
 def read_config(params_path):
@@ -92,14 +109,16 @@ def build_rows(outdir, aligner, samples):
         cells = count_called_cells(outdir, aligner, sample)
         print(f"{sample}: expected_cells {cells or 'unknown'}", file=sys.stderr)
 
-        rows.append({
+        row = {
             "sample": sample,
             "unfiltered": os.path.abspath(unfiltered),
             "symbol_col": SYMBOL_COL,
             "batch_col": BATCH_COL,
             "donor_col": DONOR_COL,
             "expected_cells": cells,
-        })
+        }
+        row.update(QC)
+        rows.append(row)
 
     return rows
 
