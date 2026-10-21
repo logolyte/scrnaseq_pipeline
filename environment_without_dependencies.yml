@@ -1,0 +1,24 @@
+name: scrnaseq
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - star=2.7.11b=h5ca1c30_8
+  - nf-core=4.1.0=pyhdfd78af_0
+  - nextflow=26.04.6=h2a3209d_1
+  - pip:
+    - anndata==0.13.3.post0
+    - array-api-compat==1.15.0
+    - donfig==0.8.1.post1
+    - google-crc32c==1.8.0
+    - h5py==3.16.0
+    - legacy-api-wrap==1.5
+    - natsort==8.4.0
+    - numcodecs==0.16.5
+    - pydantic-settings==2.15.0
+    - python-dotenv==1.2.3
+    - scipy==1.18.1
+    - scverse-misc==0.1.6
+    - session-info2==0.4.2
+    - zarr==3.3.0
+prefix: /scratch/lsundin/conda/envs/scrnaseq
