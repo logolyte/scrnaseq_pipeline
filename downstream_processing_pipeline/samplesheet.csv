@@ -1,0 +1,7 @@
+sample,unfiltered,symbol_col,batch_col,donor_col,expected_cells,min_genes,min_counts_cell,min_cells,min_counts_gene,max_mito_percentage,min_ribo_percentage,max_hb_percentage,log1p_total_counts_nmads,log1p_n_genes_by_counts_nmads,pct_counts_in_top_20_genes_nmads,pct_counts_mt_nmads
+BEM331,/scratch/lsundin/lmx1b/starsolo_output_ex50pas/star/mtx_conversions/BEM331/BEM331_raw_matrix.h5ad,gene_symbol,sample,sample,13679,200,0,0,0,100,0,100,0,0,0,0
+BEM338,/scratch/lsundin/lmx1b/starsolo_output_ex50pas/star/mtx_conversions/BEM338/BEM338_raw_matrix.h5ad,gene_symbol,sample,sample,14081,200,0,0,0,100,0,100,0,0,0,0
+BEM343,/scratch/lsundin/lmx1b/starsolo_output_ex50pas/star/mtx_conversions/BEM343/BEM343_raw_matrix.h5ad,gene_symbol,sample,sample,13887,200,0,0,0,100,0,100,0,0,0,0
+BEM345,/scratch/lsundin/lmx1b/starsolo_output_ex50pas/star/mtx_conversions/BEM345/BEM345_raw_matrix.h5ad,gene_symbol,sample,sample,11960,200,0,0,0,100,0,100,0,0,0,0
+BEM378,/scratch/lsundin/lmx1b/starsolo_output_ex50pas/star/mtx_conversions/BEM378/BEM378_raw_matrix.h5ad,gene_symbol,sample,sample,13640,200,0,0,0,100,0,100,0,0,0,0
+BEM379,/scratch/lsundin/lmx1b/starsolo_output_ex50pas/star/mtx_conversions/BEM379/BEM379_raw_matrix.h5ad,gene_symbol,sample,sample,10557,200,0,0,0,100,0,100,0,0,0,0

@@ -6,13 +6,15 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2gb
 #SBATCH --time=00:10:00
-#SBATCH --account=ag-beyer
 """Build the nf-core/scdownstream samplesheet from the nf-core/scrnaseq run.
 
 Submitted directly, no wrapper needed, since the #SBATCH directives above are
 ordinary Python comments:
 
-    sbatch --chdir=. --dependency=afterok:$STAR_JOB make_downstream_samplesheet.py
+    sbatch --chdir=. --dependency=afterok:$STAR_JOB make_scdownstream_samplesheet.py
+
+Without --starsolo-outdir, STARSOLO_OUTDIR is taken from pipeline.conf
+($PIPELINE_CONF if set, else ./pipeline.conf).
 
 Only the raw matrices are listed. scdownstream branches on whether 'filtered'
 is set: when it is, the sample is treated as already filtered and CellBender
@@ -21,7 +23,9 @@ CellBender call the cells, using the per-sample expected_cells below.
 
 Run from the project root; run_job.sh guarantees that with sbatch --chdir.
 
-    starsolo_pipeline/nf-params.json               <- read
+    pipeline.conf                                  <- read (STARSOLO_OUTDIR)
+    starsolo_pipeline/nf-params.json               <- read (aligner, input)
+    --starsolo-outdir                              <- read (STARsolo output)
     downstream_processing_pipeline/samplesheet.csv <- written
 """
 
@@ -31,8 +35,10 @@ import glob
 import gzip
 import json
 import os
+import subprocess
 import sys
 
+DEFAULT_CONF = os.environ.get("PIPELINE_CONF", "pipeline.conf")
 DEFAULT_PARAMS = "starsolo_pipeline/nf-params.json"
 DEFAULT_OUTPUT = "downstream_processing_pipeline/samplesheet.csv"
 
@@ -44,6 +50,11 @@ SYMBOL_COL = "gene_symbol"
 # mouse, so it serves as both the batch key and the biological replicate.
 BATCH_COL = "sample"
 DONOR_COL = "sample"
+
+# Written explicitly per sample: on nf-core/scdownstream 083acc65 a missing
+# value becomes [] in meta, which silently overrides the global
+# --use_ambient_corrected_counts with false.
+USE_AMBIENT_CORRECTED_COUNTS = "true"
 
 # Only a 200-gene floor per nucleus; every other cell and gene filter in
 # SCANPY_FILTER is set to its "off" value explicitly, so schema default
@@ -63,11 +74,24 @@ QC = {
 }
 
 COLUMNS = ["sample", "unfiltered", "symbol_col", "batch_col", "donor_col",
-           "expected_cells"] + list(QC)
+           "expected_cells", "use_ambient_corrected_counts"] + list(QC)
+
+
+def read_starsolo_outdir(conf_path):
+    """STARSOLO_OUTDIR from pipeline.conf, sourced by bash so ${PROJECT_ROOT} expands."""
+    if not os.path.exists(conf_path):
+        sys.exit(f"no --starsolo-outdir given and {conf_path} not found")
+    result = subprocess.run(
+        ["bash", "-c", 'source "$1" && printf %s "$STARSOLO_OUTDIR"', "_", conf_path],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0 or not result.stdout:
+        sys.exit(f"could not read STARSOLO_OUTDIR from {conf_path}: {result.stderr.strip()}")
+    return result.stdout
 
 
 def read_config(params_path):
-    """Read the scrnaseq params; paths inside are relative to that file."""
+    """Read aligner and samplesheet from the scrnaseq params; paths are relative to that file."""
     with open(params_path) as handle:
         config = json.load(handle)
 
@@ -76,7 +100,7 @@ def read_config(params_path):
         samplesheet = os.path.join(os.path.dirname(os.path.abspath(params_path)),
                                    samplesheet)
 
-    return config["outdir"].rstrip("/"), config.get("aligner", "star"), samplesheet
+    return config.get("aligner", "star"), samplesheet
 
 
 def read_samples(path):
@@ -116,6 +140,7 @@ def build_rows(outdir, aligner, samples):
             "batch_col": BATCH_COL,
             "donor_col": DONOR_COL,
             "expected_cells": cells,
+            "use_ambient_corrected_counts": USE_AMBIENT_CORRECTED_COUNTS,
         }
         row.update(QC)
         rows.append(row)
@@ -127,11 +152,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument("--starsolo-outdir",
+                        help="outdir of the nf-core/scrnaseq run (default: STARSOLO_OUTDIR in --pipeline-conf)")
+    parser.add_argument("--pipeline-conf", default=DEFAULT_CONF)
     parser.add_argument("--params", default=DEFAULT_PARAMS)
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     args = parser.parse_args(argv)
 
-    outdir, aligner, samplesheet = read_config(args.params)
+    outdir = args.starsolo_outdir or read_starsolo_outdir(args.pipeline_conf)
+    outdir = outdir.rstrip("/")
+    print(f"starsolo outdir: {outdir}", file=sys.stderr)
+    aligner, samplesheet = read_config(args.params)
     rows = build_rows(outdir, aligner, read_samples(samplesheet))
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)

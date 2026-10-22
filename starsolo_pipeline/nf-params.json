@@ -1,11 +1,6 @@
 {
     "input": "samplesheet.csv",
-    "outdir": "\/scratch\/lsundin\/lmx1b\/starsolo_output_ex50pas\/",
     "aligner": "star",
-    "protocol": "10XV3",
-    "fasta": "\/home\/lsundin\/podocyte_damage_trajectories\/cellranger_2024_reference\/fasta\/genome.fa",
-    "gtf": "\/home\/lsundin\/podocyte_damage_trajectories\/cellranger_2024_reference\/genes\/genes.gtf.gz",
-    "star_index": "\/scratch\/lsundin\/reference_cellranger\/star\/",
     "star_feature": "GeneFull_Ex50pAS",
-    "skip_cellbender": false
+    "skip_cellbender": true
 }

@@ -1,6 +1,5 @@
 {
     "input": "samplesheet.csv",
-    "outdir": "/scratch/lsundin/lmx1b/starsolo_output_ex50pas/downstream_v5/",
     "species": "mouse",
     "ambient_correction": "decontx",
     "use_ambient_corrected_counts": true,
@@ -10,5 +9,6 @@
     "skip_liana": true,
     "de_methods": "",
     "cell_cycle_scoring": false,
-    "doublet_removal": true
+    "doublet_removal": true,
+    "empty_droplet_removal": "cellbender"
 }
