@@ -19,8 +19,8 @@ export NXF_OPTS='-Xms1g -Xmx4g'
 mkdir -p "$NXF_SINGULARITY_CACHEDIR" "$APPTAINER_CACHEDIR" "$NXF_HOME"
 
 # execute the pipeline
-nextflow run nf-core/scdownstream \
-    -r 6bcf5612feff0f54c8bf8aaf8c9b3eae840fdd1c \
+nextflow run logolyte/scdownstream \
+    -r scdblfinder-first \
     -profile singularity,gpu \
     -c slurm.config \
     -work-dir "$WORK_DIR/scdownstream" \
