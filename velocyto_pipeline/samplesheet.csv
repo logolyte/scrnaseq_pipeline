@@ -1,0 +1,11 @@
+sample,fastq_1,fastq_2,strandedness
+BEM331,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161688_S1_L001_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161688_S1_L001_R2_001.fastq.gz,auto
+BEM331,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161688_S1_L002_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161688_S1_L002_R2_001.fastq.gz,auto
+BEM338,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161689_S2_L001_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161689_S2_L001_R2_001.fastq.gz,auto
+BEM338,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161689_S2_L002_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161689_S2_L002_R2_001.fastq.gz,auto
+BEM343,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161690_S3_L001_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161690_S3_L001_R2_001.fastq.gz,auto
+BEM343,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161690_S3_L002_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161690_S3_L002_R2_001.fastq.gz,auto
+BEM345,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161691_S4_L001_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161691_S4_L001_R2_001.fastq.gz,auto
+BEM345,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161691_S4_L002_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/TX179_A006200202/A006200202_161691_S4_L002_R2_001.fastq.gz,auto
+BEM378,/scratch/lsundin/lmx1b/fastq/A006200235_172888/A006200235_172888_S1_L001_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/A006200235_172888/A006200235_172888_S1_L001_R2_001.fastq.gz,auto
+BEM379,/scratch/lsundin/lmx1b/fastq/A006200235_172889/A006200235_172889_S2_L001_R1_001.fastq.gz,/scratch/lsundin/lmx1b/fastq/A006200235_172889/A006200235_172889_S2_L001_R2_001.fastq.gz,auto

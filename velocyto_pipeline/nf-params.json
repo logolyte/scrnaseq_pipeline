@@ -1,0 +1,6 @@
+{
+    "input": "../starsolo_pipeline/samplesheet.csv",
+    "aligner": "star",
+    "star_feature": "Gene Velocyto",
+    "skip_cellbender": true
+}

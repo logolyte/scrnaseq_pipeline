@@ -31,3 +31,8 @@ DOWN_JOB=$(submit scdownstream downstream_processing_pipeline \
            downstream_processing_pipeline/downstream_processing_nfcore.sh \
            --dependency=afterok:"$SHEET_JOB" --kill-on-invalid-dep=yes)
 echo "scdownstream: $DOWN_JOB"
+
+if [[ "${RUN_VELOCYTO:-false}" == true ]]; then
+    VELO_JOB=$(submit velocyto velocyto_pipeline velocyto_pipeline/velocyto_nfcore.sh)
+    echo "velocyto:     $VELO_JOB"
+fi
