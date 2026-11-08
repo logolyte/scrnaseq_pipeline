@@ -59,7 +59,12 @@ for recipe in containers/*/; do
     cp -r "$recipe". "$stage"/
     touch "$stage/lock.txt"
     echo "building $image from $def"
-    (cd "$stage" && apptainer build --fakeroot "$image.tmp" "$(basename "$def")")
+    rm -f "$image.tmp"
+    # Clusters often bind host directories by default (e.g. SINGULARITY_BIND=/scratch).
+    # %post runs in a writable container where those mount points don't exist, so
+    # the build fails; it needs no host directories, so drop the binds for the build.
+    (cd "$stage" && env -u SINGULARITY_BIND -u APPTAINER_BIND \
+        apptainer build --fakeroot "$image.tmp" "$(basename "$def")")
     mv "$image.tmp" "$image"
     rm -rf "$stage"
     trap - EXIT
