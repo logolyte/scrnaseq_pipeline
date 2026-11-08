@@ -4,7 +4,7 @@ Slurm wrapper that takes 10x FASTQs to a QC'd, ambient-corrected, doublet-free A
 
 1. **STARsolo** — [nf-core/scrnaseq](https://nf-co.re/scrnaseq) 4.2.0 (`starsolo_pipeline/`)
 2. **Samplesheet** — `make_scdownstream_samplesheet.py` builds the scdownstream input from step 1
-3. **scdownstream** — fork [logolyte/scdownstream](https://github.com/logolyte/scdownstream), branch `scdblfinder-first` (`downstream_processing_pipeline/`)
+3. **scdownstream** — [nf-core/scdownstream](https://github.com/nf-core/scdownstream), pinned to commit `0048567` on `dev` (no releases yet), with the CellBender and scDblFinder containers replaced (`downstream_processing_pipeline/`)
 4. **Velocyto** (optional) — a second nf-core/scrnaseq run producing spliced/unspliced counts (`velocyto_pipeline/`)
 
 ## What each step does
@@ -13,7 +13,7 @@ Slurm wrapper that takes 10x FASTQs to a QC'd, ambient-corrected, doublet-free A
 |---|---|
 | STARsolo | `GeneFull_Ex50pAS` features (exons + introns, for nuclei), `EmptyDrops_CR` cell calling, Cell Ranger UMI dedup (`1MM_CR`) and multi-gene UMI filtering, CellBender and RDS conversion skipped |
 | Samplesheet | Passes only the **raw** matrix per sample, so scdownstream does the cell calling itself; `expected_cells` = number of STARsolo EmptyDrops cells |
-| scdownstream | CellBender empty-droplet removal (GPU) → scDblFinder doublet removal → decontX ambient correction (empty droplets as background) → QC (only `min_genes` 200 and `min_counts_cell` 200, see Notes) → log1p, PCA (30 PCs); downstream analysis runs on the ambient-corrected counts |
+| scdownstream | CellBender empty-droplet removal (GPU) → decontX ambient correction (empty droplets as background) → QC (only `min_genes` 200 and `min_counts_cell` 200, see Notes) → scDblFinder doublet removal (on the decontX-corrected counts) → log1p, PCA (30 PCs); downstream analysis runs on the ambient-corrected counts |
 | Velocyto | `Gene Velocyto` features, same STAR settings; the h5ads carry `spliced`/`unspliced`/`ambiguous` layers |
 
 ## Setup

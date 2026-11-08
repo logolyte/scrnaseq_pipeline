@@ -27,8 +27,8 @@ for image in cellbender-0.4.0-gpu.sif scdblfinder-1.24.10.sif; do
 done
 
 # execute the pipeline
-nextflow run logolyte/scdownstream \
-    -r scdblfinder-first \
+nextflow run nf-core/scdownstream \
+    -r 0048567589248aac5669ffd0151b8f6d15417804 \
     -profile singularity,gpu \
     -c slurm.config \
     -work-dir "$WORK_DIR/scdownstream" \
