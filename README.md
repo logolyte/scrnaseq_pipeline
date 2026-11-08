@@ -13,7 +13,7 @@ Slurm wrapper that takes 10x FASTQs to a QC'd, ambient-corrected, doublet-free A
 |---|---|
 | STARsolo | `GeneFull_Ex50pAS` features (exons + introns, for nuclei), `EmptyDrops_CR` cell calling, Cell Ranger UMI dedup (`1MM_CR`) and multi-gene UMI filtering, CellBender and RDS conversion skipped |
 | Samplesheet | Passes only the **raw** matrix per sample, so scdownstream does the cell calling itself; `expected_cells` = number of STARsolo EmptyDrops cells |
-| scdownstream | CellBender empty-droplet removal (GPU) → scDblFinder doublet removal → decontX ambient correction (empty droplets as background) → QC (only `min_genes` 200) → log1p, PCA (30 PCs); downstream analysis runs on the ambient-corrected counts |
+| scdownstream | CellBender empty-droplet removal (GPU) → scDblFinder doublet removal → decontX ambient correction (empty droplets as background) → QC (only `min_genes` 200 and `min_counts_cell` 200, see Notes) → log1p, PCA (30 PCs); downstream analysis runs on the ambient-corrected counts |
 | Velocyto | `Gene Velocyto` features, same STAR settings; the h5ads carry `spliced`/`unspliced`/`ambiguous` layers |
 
 ## Setup
@@ -63,3 +63,9 @@ All under `PROJECT_ROOT`:
 - **Velocyto counts:** the velocyto run's `X` counts exons only (STAR requires `Gene` for `Velocyto`, and `Gene` can't be combined with `GeneFull_Ex50pAS` here). Use only its `spliced`/`unspliced` layers. Take them from the per-sample **raw** h5ads and match them to the scdownstream cells by sample and barcode. Correct the layers for ambient RNA before running scVelo. In snRNA-seq, ambient RNA is mostly spliced.
 - **No `--twopassMode Basic`:** a STAR bug breaks it with `GeneFull_Ex50pAS` ([STAR#1533](https://github.com/alexdobin/STAR/issues/1533)). `validation.ignoreParams` lets the `star_feature` value through nf-core's parameter check.
 - **Per-sample `use_ambient_corrected_counts`:** the samplesheet builder writes this column for every sample. If it's empty, scdownstream silently turns ambient-corrected counts off.
+- **QC is deliberately lenient:** the pipeline only removes empty droplets and debris, and stricter filtering is left to each analysis. Both filters are computed on the decontX-corrected counts.
+  - `min_counts_cell` 200 removes droplets with fewer than 200 UMI left after ambient correction. These are mostly ambient RNA, such as debris.
+  - `min_genes` 200 effectively counts raw genes, because decontX's fractional counts keep every detected gene above zero. It has no effect when the empty droplets already have more than 200 genes (high-ambient nuclei), but it removes near-empty droplets in single-cell data.
+- **No mitochondrial filter (single-cell data):** the pipeline sets no mito cut-off, which is fine for nuclei, where mito reads are close to zero after ambient correction. Single-cell output is not QC-complete until a mito filter has been applied in the analysis.
+  - Dying or broken cells keep their mitochondrial transcripts but lose cytoplasmic mRNA, so they have a high mito fraction and pass both gene and count floors.
+  - In kidney, healthy proximal tubule and other metabolically active cells can have 20–50% mito, so choose the cut-off per tissue, ideally per cell type, or use a per-sample adaptive cut-off (e.g. `pct_counts_mt_nmads`), and check which cells it removes.

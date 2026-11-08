@@ -56,12 +56,10 @@ DONOR_COL = "sample"
 # --use_ambient_corrected_counts with false.
 USE_AMBIENT_CORRECTED_COUNTS = "true"
 
-# Only a 200-gene floor per nucleus; every other cell and gene filter in
-# SCANPY_FILTER is set to its "off" value explicitly, so schema default
-# changes cannot re-enable it.
+# Lenient filtering to remove debris, more strict filtering can be done after pipieline
 QC = {
-    "min_genes": 200,
-    "min_counts_cell": 0,
+    "min_genes": 200,         # Removes near-empty droplets in samples with little ambient RNA
+    "min_counts_cell": 200,   # >= 200 UMI left after DecontX, removes ambient-like debris
     "min_cells": 0,
     "min_counts_gene": 0,
     "max_mito_percentage": 100,
