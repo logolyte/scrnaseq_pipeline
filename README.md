@@ -12,7 +12,7 @@ Slurm wrapper that takes 10x FASTQs to a QC'd, ambient-corrected, doublet-free A
 | Step | Settings |
 |---|---|
 | STARsolo | `GeneFull_Ex50pAS` features (exons + introns, for nuclei), `EmptyDrops_CR` cell calling, Cell Ranger UMI dedup (`1MM_CR`) and multi-gene UMI filtering, CellBender and RDS conversion skipped |
-| Samplesheet | Passes only the **raw** matrix per sample, so scdownstream does the cell calling itself; `expected_cells` = number of STARsolo EmptyDrops cells |
+| Samplesheet | Passes only the **raw** matrix per sample, so scdownstream does the cell calling itself; chooses CellBender's expected cells and total droplets per sample (`cellbender_priors.py`, see Notes) |
 | scdownstream | CellBender empty-droplet removal (GPU) → decontX ambient correction (empty droplets as background) → QC (only `min_genes` 200 and `min_counts_cell` 200, see Notes) → scDblFinder doublet removal (on the decontX-corrected counts) → log1p, PCA (30 PCs); downstream analysis runs on the ambient-corrected counts |
 | Velocyto | `Gene Velocyto` features, same STAR settings; the h5ads carry `spliced`/`unspliced`/`ambiguous` layers |
 
@@ -76,6 +76,12 @@ All under `PROJECT_ROOT`:
 
 - **Velocyto counts:** the velocyto run's `X` counts exons only (STAR requires `Gene` for `Velocyto`, and `Gene` can't be combined with `GeneFull_Ex50pAS` here). Use only its `spliced`/`unspliced` layers. Take them from the per-sample **raw** h5ads and match them to the scdownstream cells by sample and barcode. Correct the layers for ambient RNA before running scVelo. In snRNA-seq, ambient RNA is mostly spliced.
 - **No `--twopassMode Basic`:** a STAR bug breaks it with `GeneFull_Ex50pAS` ([STAR#1533](https://github.com/alexdobin/STAR/issues/1533)). `validation.ignoreParams` lets the `star_feature` value through nf-core's parameter check.
+- **CellBender settings per sample:** `make_scdownstream_samplesheet.py` calls `cellbender_priors.py` for each sample and writes `downstream_processing_pipeline/cellbender_priors.tsv`. `slurm.config` reads `--expected-cells` and `--total-droplets-included` from that file by sample name, because scdownstream only passes `expected_cells` from the samplesheet to CellBender. The run stops if a sample is missing from the file.
+  - `expected_cells` = 0.75 × the STARsolo EmptyDrops cells. This keeps borderline EmptyDrops calls out of CellBender's cell prior; CellBender still calls more cells when the data support them.
+  - `total_droplets` = the number of barcodes with at least as many UMI as the empty-droplet peak. The peak is the tallest peak of the log-UMI histogram of non-EmptyDrops barcodes with ≥ 10 UMI, which avoids the low plateau of barcode-swapped barcodes. This puts CellBender's empty prior on the empty droplets.
+  - Without a usable peak (none, or below 20 UMI), `total_droplets` falls back to EmptyDrops cells + 20,000.
+  - **Check before running scdownstream:** the samplesheet job's log and the file's `warnings` column. The codes are explained at the top of `cellbender_priors.py`. `POOR_SEPARATION` and `EMPTYDROPS_CALLS_EMPTIES` mean no prior settings will give clean cell calls, so inspect the sample (damage, ambient RNA, depth). `LARGE_TOTAL` means CellBender will be slow and may not fit on the GPU.
+  - The thresholds were tuned on high-ambient snRNA-seq (mouse kidney). In low-ambient data, e.g. single-cell, expect more fallbacks; check the first run.
 - **Per-sample `use_ambient_corrected_counts`:** the samplesheet builder writes this column for every sample. If it's empty, scdownstream silently turns ambient-corrected counts off.
 - **QC is deliberately lenient:** the pipeline only removes empty droplets and debris, and stricter filtering is left to each analysis. Both filters are computed on the decontX-corrected counts.
   - `min_counts_cell` 200 removes droplets with fewer than 200 UMI left after ambient correction. These are mostly ambient RNA, such as debris.

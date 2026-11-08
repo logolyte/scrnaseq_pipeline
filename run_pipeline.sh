@@ -10,6 +10,13 @@ export PIPELINE_CONF
 set -a; source "$PIPELINE_CONF"; set +a
 mkdir -p slurm_logs
 
+# The samplesheet job runs Python directly and needs numpy/h5py; sbatch passes
+# this shell's environment on to it
+set +u  # conda's activation scripts use unset variables
+eval "$(conda shell.bash hook)"
+conda activate scrnaseq
+set -u
+
 submit() {   # submit <name> <chdir> <script> [sbatch options...]
     local name=$1 chdir=$2 script=$3
     shift 3 # Do not pass name, chdir and script do the submitted script

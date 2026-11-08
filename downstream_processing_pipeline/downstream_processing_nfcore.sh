@@ -26,6 +26,18 @@ for image in cellbender-0.4.0-gpu.sif scdblfinder-1.24.10.sif; do
     fi
 done
 
+# per-sample CellBender settings, written next to the samplesheet by
+# make_scdownstream_samplesheet.py and read by slurm.config
+export CELLBENDER_PRIORS="$PWD/cellbender_priors.tsv"
+if [[ ! -e "$CELLBENDER_PRIORS" ]]; then
+    echo "$CELLBENDER_PRIORS not found; rebuild the samplesheet with make_scdownstream_samplesheet.py" >&2
+    exit 1
+fi
+if [[ "$CELLBENDER_PRIORS" -ot samplesheet.csv ]]; then
+    echo "$CELLBENDER_PRIORS is older than samplesheet.csv; rebuild both with make_scdownstream_samplesheet.py" >&2
+    exit 1
+fi
+
 # execute the pipeline
 nextflow run nf-core/scdownstream \
     -r 0048567589248aac5669ffd0151b8f6d15417804 \

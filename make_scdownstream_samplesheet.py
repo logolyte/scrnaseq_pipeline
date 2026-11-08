@@ -4,8 +4,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=2gb
-#SBATCH --time=00:10:00
+#SBATCH --mem=8gb
+#SBATCH --time=01:00:00
 """Build the nf-core/scdownstream samplesheet from the nf-core/scrnaseq run.
 
 Submitted directly, no wrapper needed, since the #SBATCH directives above are
@@ -19,28 +19,42 @@ Without --starsolo-outdir, STARSOLO_OUTDIR is taken from pipeline.conf
 Only the raw matrices are listed. scdownstream branches on whether 'filtered'
 is set: when it is, the sample is treated as already filtered and CellBender
 never runs empty-droplet removal. Giving it just 'unfiltered' is what makes
-CellBender call the cells, using the per-sample expected_cells below.
+CellBender call the cells.
 
-Run from the project root; run_job.sh guarantees that with sbatch --chdir.
+CellBender's settings are chosen per sample by cellbender_priors.py (see there):
+expected_cells = 0.75 x the EmptyDrops cells, total_droplets = the barcodes at or
+above the empty-droplet peak. expected_cells also goes into the samplesheet, but
+scdownstream only passes that column to CellBender, so both values are read from
+cellbender_priors.tsv by downstream_processing_pipeline/slurm.config. Check the
+job log and the 'warnings' column of that file before running scdownstream.
 
-    pipeline.conf                                  <- read (STARSOLO_OUTDIR)
-    starsolo_pipeline/nf-params.json               <- read (aligner, input)
-    --starsolo-outdir                              <- read (STARsolo output)
-    downstream_processing_pipeline/samplesheet.csv <- written
+Run from the project root (run_pipeline.sh guarantees that with sbatch --chdir),
+in the scrnaseq conda environment (needs numpy and h5py; run_pipeline.sh
+activates it before submitting).
+
+    pipeline.conf                                           <- read (STARSOLO_OUTDIR)
+    starsolo_pipeline/nf-params.json                        <- read (aligner, input)
+    --starsolo-outdir                                       <- read (STARsolo output)
+    downstream_processing_pipeline/samplesheet.csv          <- written
+    downstream_processing_pipeline/cellbender_priors.tsv    <- written
 """
 
 import argparse
 import csv
-import glob
-import gzip
 import json
 import os
 import subprocess
 import sys
 
+# sbatch runs a copy of this script from Slurm's spool directory, so look for
+# cellbender_priors.py next to the original and in the project root (cwd)
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]
+import cellbender_priors  # noqa: E402
+
 DEFAULT_CONF = os.environ.get("PIPELINE_CONF", "pipeline.conf")
 DEFAULT_PARAMS = "starsolo_pipeline/nf-params.json"
 DEFAULT_OUTPUT = "downstream_processing_pipeline/samplesheet.csv"
+DEFAULT_PRIORS_OUTPUT = "downstream_processing_pipeline/cellbender_priors.tsv"
 
 # var["gene_symbol"] exists in every scrnaseq h5ad; naming it here makes
 # scdownstream index on symbols rather than unversioned Ensembl IDs.
@@ -108,28 +122,25 @@ def read_samples(path):
     return list(dict.fromkeys(names))
 
 
-def count_called_cells(outdir, aligner, sample):
-    """Cells called by EmptyDrops, handed to CellBender as expected_cells."""
-    pattern = os.path.join(outdir, aligner, sample, f"{sample}.Solo.out",
-                           "Gene*", "filtered", "barcodes.tsv.gz")
-    matches = glob.glob(pattern)
-    if not matches:
-        return ""
-    with gzip.open(matches[0], "rt") as handle:
-        return sum(1 for _ in handle)
-
-
 def build_rows(outdir, aligner, samples):
+    """Samplesheet rows and CellBender settings (cellbender_priors.COLUMNS) per sample."""
     conversions = os.path.join(outdir, aligner, "mtx_conversions")
-    rows = []
+    rows, priors = [], []
 
     for sample in samples:
         unfiltered = os.path.join(conversions, sample, f"{sample}_raw_matrix.h5ad")
-        if not os.path.exists(unfiltered):
-            sys.exit(f"missing raw matrix {unfiltered}; did the scrnaseq run finish?")
+        filtered = os.path.join(conversions, sample, f"{sample}_filtered_matrix.h5ad")
+        for path in (unfiltered, filtered):
+            if not os.path.exists(path):
+                sys.exit(f"missing {path}; did the scrnaseq run finish?")
 
-        cells = count_called_cells(outdir, aligner, sample)
-        print(f"{sample}: expected_cells {cells or 'unknown'}", file=sys.stderr)
+        setting = cellbender_priors.priors_for_sample(sample, unfiltered, filtered)
+        priors.append(setting)
+        print(f"{sample}: EmptyDrops cells {setting['emptydrops_cells']}, "
+              f"expected_cells {setting['expected_cells']}, "
+              f"total_droplets {setting['total_droplets']} ({setting['method']}), "
+              f"cell/empty prior {setting['cell_prior']}/{setting['empty_prior']}",
+              file=sys.stderr)
 
         row = {
             "sample": sample,
@@ -137,13 +148,13 @@ def build_rows(outdir, aligner, samples):
             "symbol_col": SYMBOL_COL,
             "batch_col": BATCH_COL,
             "donor_col": DONOR_COL,
-            "expected_cells": cells,
+            "expected_cells": setting["expected_cells"],
             "use_ambient_corrected_counts": USE_AMBIENT_CORRECTED_COUNTS,
         }
         row.update(QC)
         rows.append(row)
 
-    return rows
+    return rows, priors
 
 
 def main(argv=None):
@@ -155,13 +166,15 @@ def main(argv=None):
     parser.add_argument("--pipeline-conf", default=DEFAULT_CONF)
     parser.add_argument("--params", default=DEFAULT_PARAMS)
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
+    parser.add_argument("--priors-output", default=DEFAULT_PRIORS_OUTPUT,
+                        help="CellBender settings per sample, read by slurm.config")
     args = parser.parse_args(argv)
 
     outdir = args.starsolo_outdir or read_starsolo_outdir(args.pipeline_conf)
     outdir = outdir.rstrip("/")
     print(f"starsolo outdir: {outdir}", file=sys.stderr)
     aligner, samplesheet = read_config(args.params)
-    rows = build_rows(outdir, aligner, read_samples(samplesheet))
+    rows, priors = build_rows(outdir, aligner, read_samples(samplesheet))
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w", newline="") as handle:
@@ -170,6 +183,20 @@ def main(argv=None):
         writer.writerows(rows)
 
     print(f"wrote {args.output} with {len(rows)} samples", file=sys.stderr)
+
+    os.makedirs(os.path.dirname(os.path.abspath(args.priors_output)), exist_ok=True)
+    with open(args.priors_output, "w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=cellbender_priors.COLUMNS, delimiter="\t")
+        writer.writeheader()
+        writer.writerows(priors)
+    print(f"wrote {args.priors_output}", file=sys.stderr)
+
+    flagged = [p for p in priors if p["warnings"] != "none"]
+    for p in flagged:
+        print(f"CHECK {p['sample']}: {p['warnings']}", file=sys.stderr)
+    if flagged:
+        print(f"{len(flagged)} of {len(priors)} samples have CellBender prior warnings; "
+              f"see the messages above and cellbender_priors.py", file=sys.stderr)
 
 
 if __name__ == "__main__":
