@@ -1,0 +1,21 @@
+# scDblFinder for the SCDBLFINDER process of nf-core/scdownstream.
+# Same packages as the module's environment.yml, except:
+#   - scDblFinder 1.24.10 instead of 1.24.0: 1.24.0 calls 2-3x too few doublets
+#     with xgboost >= 3.1 (nf-core/scdownstream#382)
+#   - xgboost pinned, so a rebuild cannot pick up an incompatible version
+#   - procps-ng, so Nextflow can record task resource usage
+# The image is built from lock.txt (exact versions of every dependency) when it
+# exists; this file is used only to create the first lock.
+name: base
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bioconda::bioconductor-scdblfinder=1.24.10
+  - conda-forge::r-xgboost=3.4.2
+  - bioconda::bioconductor-singlecellexperiment=1.32.0
+  - bioconda::bioconductor-biocparallel=1.44.0
+  - bioconda::bioconductor-anndatar=1.0.2
+  - bioconda::bioconductor-rhdf5=2.54.1
+  - conda-forge::r-tidyverse=2.0.0
+  - conda-forge::procps-ng

@@ -6,6 +6,7 @@ dependencies:
   - star=2.7.11b=h5ca1c30_8
   - nf-core=4.1.0=pyhdfd78af_0
   - nextflow=26.04.6=h2a3209d_1
+  - numpy=2.5.2  # imported directly by the pipeline's Python scripts
   - pip:
     - anndata==0.13.3.post0
     - array-api-compat==1.15.0
@@ -21,4 +22,3 @@ dependencies:
     - scverse-misc==0.1.6
     - session-info2==0.4.2
     - zarr==3.3.0
-prefix: /scratch/lsundin/conda/envs/scrnaseq

@@ -217,4 +217,3 @@ dependencies:
       - scverse-misc==0.1.6
       - session-info2==0.4.2
       - zarr==3.3.0
-prefix: /scratch/lsundin/conda/envs/scrnaseq

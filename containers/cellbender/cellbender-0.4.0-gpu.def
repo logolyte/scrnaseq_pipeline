@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+
+# CellBender for the CELLBENDER_REMOVEBACKGROUND process of nf-core/scdownstream.
+# Replaces the module's GPU container (CellBender 0.3.2 on an older PyTorch/CUDA),
+# which does not run on H100 GPUs. CellBender 0.4.0 only adds support for newer
+# Python versions; its results match 0.3.2.
+#
+# Built by setup.sh, which copies lock.txt (empty if there is no lock yet) to
+# /opt/recipe. The lock pins every Python package, as a pip constraints file.
+
+%files
+    lock.txt /opt/recipe/lock.txt
+
+%post
+    if [ -s /opt/recipe/lock.txt ]; then
+        pip install --no-cache-dir -c /opt/recipe/lock.txt cellbender==0.4.0 torch==2.4.1
+    else
+        pip install --no-cache-dir cellbender==0.4.0 torch==2.4.1
+    fi
+    python -c "import torch; assert torch.__version__.startswith('2.4.1'), torch.__version__"
+
+# Prints the exact package list; setup.sh saves it as lock.txt after the first build
+%apprun lock
+    exec /opt/conda/bin/pip list --format=freeze

@@ -18,10 +18,24 @@ Slurm wrapper that takes 10x FASTQs to a QC'd, ambient-corrected, doublet-free A
 
 ## Setup
 
-1. Create the conda environment: `conda env create -f environment.yml` (exact versions) or `environment_without_dependencies.yml` (top-level packages only). The scripts activate an environment named `scrnaseq`.
-2. Edit `pipeline.conf`: `PROJECT_ROOT`, `SBATCH_ACCOUNT`, `PROTOCOL`, `FASTA_PATH`, `GTF_PATH`, `STAR_INDEX_PATH`, `RUN_VELOCYTO`. The STAR index must have been built from that FASTA/GTF.
+1. Edit `pipeline.conf`: `PROJECT_ROOT`, `SBATCH_ACCOUNT`, `CONTAINER_DIR`, `PROTOCOL`, `FASTA_PATH`, `GTF_PATH`, `STAR_INDEX_PATH`, `RUN_VELOCYTO`. The STAR index must have been built from that FASTA/GTF.
+2. Run `bash setup.sh` once (in an interactive job if your cluster doesn't allow builds on the login node). It creates the conda environment and builds the pipeline's own containers. It skips anything that already exists.
 3. Fill in `starsolo_pipeline/samplesheet.csv`: `sample,fastq_1,fastq_2`, one row per lane, with lanes of one sample sharing the `sample` name. Leave out `expected_cells`: if it's set, nf-core/scrnaseq adds its own `--soloCellFilter CellRanger2.2`.
-4. Check the cluster settings in the `slurm.config` files: partition `smp`, 64 CPUs / 72 GB for `process_high`. The CellBender GPU job uses the `gpu` queue, the account `ag-beyer` and a local container (`cellbender-0.4.0-gpu.sif`), all hardcoded in `downstream_processing_pipeline/slurm.config`.
+4. Check the cluster settings in the `slurm.config` files: partition `smp`, 64 CPUs / 72 GB for `process_high`. The CellBender GPU job uses the `gpu` queue and an H100 slice (`--gpus=h100_1g.12gb:1`), hardcoded in `downstream_processing_pipeline/slurm.config`.
+
+### Environments and containers
+
+| Path | Contents |
+|---|---|
+| `envs/scrnaseq.yml` | Conda environment `scrnaseq`, top-level packages: Nextflow, nf-core, STAR and the Python packages the pipeline's own scripts use. The scripts activate it by name. |
+| `envs/scrnaseq.lock.yml` | The same environment with exact versions of every package. `setup.sh` uses it, and falls back to `scrnaseq.yml` if it no longer resolves. |
+| `containers/cellbender/` | CellBender 0.4.0 on PyTorch 2.4.1/CUDA 12.1. Replaces the scdownstream module's GPU image (CellBender 0.3.2), which doesn't run on H100 GPUs. |
+| `containers/scdblfinder/` | scDblFinder 1.24.10. Replaces the module's 1.24.0, which calls 2–3× too few doublets with xgboost ≥ 3.1 ([nf-core/scdownstream#382](https://github.com/nf-core/scdownstream/issues/382)). |
+
+`setup.sh` builds each `containers/<name>/<image>.def` into `$CONTAINER_DIR/<image>.sif`, and `downstream_processing_pipeline/slurm.config` points the two processes at those images.
+- **Lock files:** each recipe installs exact versions from its `lock.txt`. If a recipe has no `lock.txt` yet, the first build writes one from the image; commit it so later builds are identical.
+- **Rebuilding:** delete the `.sif` and rerun `setup.sh`.
+- **No `apptainer build --fakeroot`:** if your cluster doesn't allow it, build the `.def` elsewhere and copy the `.sif` into `$CONTAINER_DIR`.
 
 ## Running
 

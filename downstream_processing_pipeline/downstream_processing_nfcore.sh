@@ -18,6 +18,14 @@ set -a; source "${PIPELINE_CONF:?submit via run_job.sh or set PIPELINE_CONF}"; s
 export NXF_OPTS='-Xms1g -Xmx4g'
 mkdir -p "$NXF_SINGULARITY_CACHEDIR" "$APPTAINER_CACHEDIR" "$NXF_HOME"
 
+# the images slurm.config points to; built by setup.sh
+for image in cellbender-0.4.0-gpu.sif scdblfinder-1.24.10.sif; do
+    if [[ ! -e "$CONTAINER_DIR/$image" ]]; then
+        echo "$CONTAINER_DIR/$image not found; run setup.sh first" >&2
+        exit 1
+    fi
+done
+
 # execute the pipeline
 nextflow run logolyte/scdownstream \
     -r scdblfinder-first \

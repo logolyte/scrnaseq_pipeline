@@ -1,0 +1,26 @@
+Bootstrap: docker
+From: mambaorg/micromamba:2.0.5
+
+# Built by setup.sh, which copies environment.yml and lock.txt (empty if there
+# is no lock yet) to /opt/recipe.
+
+%files
+    environment.yml /opt/recipe/environment.yml
+    lock.txt /opt/recipe/lock.txt
+
+%post
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    if [ -s /opt/recipe/lock.txt ]; then
+        micromamba install -y -n base -f /opt/recipe/lock.txt
+    else
+        micromamba install -y -n base -f /opt/recipe/environment.yml
+    fi
+    micromamba clean -a -y
+    /opt/conda/bin/Rscript -e 'stopifnot(packageVersion("scDblFinder") == "1.24.10")'
+
+%environment
+    export PATH=/opt/conda/bin:$PATH
+
+# Prints the exact package list; setup.sh saves it as lock.txt after the first build
+%apprun lock
+    exec /bin/micromamba env export -r /opt/conda -n base --explicit
