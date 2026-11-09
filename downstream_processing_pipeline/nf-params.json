@@ -10,5 +10,6 @@
     "de_methods": "",
     "cell_cycle_scoring": false,
     "doublet_removal": true,
-    "empty_droplet_removal": "cellbender"
+    "empty_droplet_removal": "cellbender",
+    "save_intermediates": true
 }
