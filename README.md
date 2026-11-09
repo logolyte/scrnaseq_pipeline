@@ -1,6 +1,6 @@
 # scRNA-seq pipeline
 
-Slurm wrapper that takes 10x FASTQs to a QC'd, ambient-corrected, doublet-free AnnData:
+Slurm wrapper that takes 10x FASTQs to a quality controlled, ambient-corrected, doublet-free AnnData:
 
 1. **STARsolo** — [nf-core/scrnaseq](https://nf-co.re/scrnaseq) 4.2.0 (`starsolo_pipeline/`)
 2. **Samplesheet** — `make_scdownstream_samplesheet.py` builds the scdownstream input from step 1
