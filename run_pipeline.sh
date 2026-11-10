@@ -10,8 +10,14 @@ export PIPELINE_CONF
 set -a; source "$PIPELINE_CONF"; set +a
 mkdir -p slurm_logs
 
-# The samplesheet job runs Python directly and needs numpy/h5py; sbatch passes
-# this shell's environment on to it
+# Check before submitting anything (relative paths are relative to this repo)
+if [[ -n "${MARKER_GENES:-}" && ! -f "$MARKER_GENES" ]]; then
+    echo "MARKER_GENES file $MARKER_GENES not found" >&2
+    exit 1
+fi
+
+# The samplesheet and cellassign jobs run Python directly and need the scrnaseq
+# packages; sbatch passes this shell's environment on to them
 set +u  # conda's activation scripts use unset variables
 eval "$(conda shell.bash hook)"
 conda activate scrnaseq
@@ -38,6 +44,12 @@ DOWN_JOB=$(submit scdownstream downstream_processing_pipeline \
            downstream_processing_pipeline/downstream_processing_nfcore.sh \
            --dependency=afterok:"$SHEET_JOB" --kill-on-invalid-dep=yes)
 echo "scdownstream: $DOWN_JOB"
+
+if [[ -n "${MARKER_GENES:-}" ]]; then
+    CELLASSIGN_JOB=$(submit cellassign . cellassign.py \
+                     --dependency=afterok:"$DOWN_JOB" --kill-on-invalid-dep=yes)
+    echo "cellassign:   $CELLASSIGN_JOB"
+fi
 
 if [[ "${RUN_VELOCYTO:-false}" == true ]]; then
     VELO_JOB=$(submit velocyto velocyto_pipeline velocyto_pipeline/velocyto_nfcore.sh)

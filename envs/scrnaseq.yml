@@ -3,11 +3,20 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - python=3.14  # pinned: some pip packages have no 3.15 wheels yet
   - star=2.7.11b=h5ca1c30_8
   - nf-core=4.1.0=pyhdfd78af_0
   - nextflow=26.04.6=h2a3209d_1
   - numpy=2.5.2  # imported directly by the pipeline's Python scripts
   - pip:
+    # CPU-only PyTorch for CellAssign (cellassign.py); without this index pip
+    # installs the CUDA build, which is several GB larger
+    - --extra-index-url https://download.pytorch.org/whl/cpu
+    - torch==2.15.0
+    - scvi-tools==1.5.2  # CellAssign
+    - scanpy==1.12.5
+    - pyyaml==6.0.3      # marker gene lists
+    - matplotlib==3.11.2
     - anndata==0.13.3.post0
     - array-api-compat==1.15.0
     - donfig==0.8.1.post1

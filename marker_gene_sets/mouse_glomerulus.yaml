@@ -1,0 +1,13 @@
+# Mouse glomerular and surrounding kidney cell types, from the Lmx1b damage
+# trajectories project (cell_type_assignment_v2.ipynb). Gene symbols.
+Podocyte: [Nphs1, Nphs2, Podxl, Arhgap24, Synpo, Col4a3, Crb2, Myom2]
+Parietal epithelial: [Cldn1, Pax8, Cdh6, Lbp, Dkk3, Cp, Akap12, Stc2]
+Endothelial: [Pecam1, Emcn, Kdr, Flt1]
+Mesangial: [Pdgfrb, Itga8, Gata3]
+Proximal tubule: [Lrp2, Keg1, Slc34a1, Cubn]
+Thick ascending limb: [Umod, Slc12a1]
+Distal convoluted tubule: [Slc12a3, Pvalb, Kcnj1, Kng2, Defb1]
+Connecting tubule: [Calb1, Slc8a1]
+Principal cell: [Aqp2, Hsd11b2]
+Intercalated cells: [Insrr, Atp6v1g3, Atp6v0d2, Atp6v1c2]
+Immune: [Ptprc, Cd74, C1qa]
