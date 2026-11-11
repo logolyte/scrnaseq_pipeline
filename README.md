@@ -99,7 +99,7 @@ All under `PROJECT_ROOT`:
 | Path | Contents |
 |---|---|
 | `results/starsolo/star/<sample>/` | BAM, `Solo.out` matrices |
-| `results/starsolo/star/mtx_conversions/` | `<sample>/<sample>_{raw,filtered}_matrix.h5ad`, `combined_*.h5ad` |
+| `results/starsolo/star/mtx_conversions/` | `<sample>/<sample>_{raw,filtered}_matrix.h5ad` (the samples are not concatenated, see `slurm.config`) |
 | `results/final/<name>.h5ad` | **The final AnnData** (see Finalize above) |
 | `results/scdownstream/09_finalized/` | scdownstream's AnnData and provenance; `finalize_adata.py` reads it and the intermediates in `02_quality_control/` and `05_cluster_dimred/` (`save_intermediates` must stay on) |
 | `results/cellassign/` | `cell_types.tsv` (per cell: sample, cell type, its probability, one probability column per type), `cell_type_counts.tsv`, `run_info.json` (settings and cell types, becomes `uns['cellassign']`), `restarts.tsv` (one row per fit), `training_history.png`, and the marker list used (`markers.yaml`, `marker_matrix.tsv`) |
