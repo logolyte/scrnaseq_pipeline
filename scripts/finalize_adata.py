@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=48gb
+#SBATCH --mem=64gb
 #SBATCH --time=04:00:00
 """Assemble the final AnnData from the scdownstream output and the steps around it.
 
@@ -18,6 +18,7 @@ Defaults come from pipeline.conf ($PIPELINE_CONF if set, else ./pipeline.conf):
     --downstream-outdir  DOWNSTREAM_OUTDIR, for the scdownstream intermediates
     --samplesheet        SAMPLESHEET, relative to the directory of pipeline.conf
     --cellassign-dir     CELLASSIGN_OUTDIR, only if MARKER_GENES is set
+    --velocyto-dir       VELOCYTO_DECONTX_OUTDIR, only if RUN_VELOCYTO is "true"
     --output             $FINAL_OUTDIR/<input name>.h5ad
 
 scdownstream must have run with save_intermediates true: the doublet scores and
@@ -26,12 +27,15 @@ the neighbor graph are only in its intermediate files.
 Changes to the scdownstream h5ad:
   X        log1p-normalised counts (was the analysis counts; the 'log1p' layer is
            moved here). Layers 'raw_counts' (STARsolo counts of the cells CellBender
-           called) and 'ambient_corrected_<method>' are kept.
+           called) and 'ambient_corrected_<method>' are kept. With velocyto: layers
+           spliced, unspliced and ambiguous (decontX-corrected, velocity_decontx.py)
+           and spliced_raw, unspliced_raw and ambiguous_raw (uncorrected).
   obs      added: doublet_score (scDblFinder, from the per-sample intermediates),
            ambient_fraction_removed (1 - corrected / raw counts per cell),
            total_counts_raw and n_genes_by_counts_raw (the QC columns from
            scdownstream are computed on the corrected counts), cell_type and
-           cell_type_probability (CellAssign), and every samplesheet column that is
+           cell_type_probability (CellAssign), velocity_contamination (decontX
+           on the stacked velocyto layers), and every samplesheet column that is
            neither an nf-core/scrnaseq column nor a QC column, as per-sample metadata.
            renamed: <key>-<res>_leiden -> leiden_<res>,
            <key>-<res>:entropy -> leiden_<res>_sample_entropy (key e.g. pca-global).
@@ -44,7 +48,8 @@ Changes to the scdownstream h5ad:
   obsp     connectivities and distances: the graph scdownstream computed its UMAP
            and Leiden clusters from (05_cluster_dimred/*/neighbors/).
   uns      colors renamed with their obs column; added: neighbors, cellassign
-           (the run_info.json of the CellAssign run), qc_thresholds (per sample, the
+           (the run_info.json of the CellAssign run), velocyto_decontx (the
+           run_info.json of velocity_decontx.py), qc_thresholds (per sample, the
            defaults with the samplesheet's QC columns applied) and pipeline (provenance).
 """
 
@@ -67,6 +72,7 @@ import anndata  # noqa: E402
 import h5py  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+import scipy.sparse  # noqa: E402
 
 DROP_OBS = ["n_counts", "n_genes", "donor", "batch", "condition", "label"]
 DROP_VAR = ["intersection"]
@@ -217,6 +223,57 @@ def add_sample_metadata(adata, metadata):
         print(f"sample metadata: {', '.join(metadata.columns)}")
 
 
+VELOCYTO_LAYERS = ("spliced", "unspliced", "ambiguous")
+
+
+def add_velocyto(adata, velocyto_dir):
+    """Velocyto layers, corrected and raw, from the velocity_decontx.py outputs.
+
+    The velocyto counts come from a separate STAR run: cells are matched by
+    sample and barcode, genes by symbol.
+    """
+    info_path = os.path.join(velocyto_dir, "run_info.json")
+    if not os.path.exists(info_path):
+        sys.exit(f"{info_path} not found; did velocity_decontx.py finish? (--no-velocyto skips it)")
+    with open(info_path) as handle:
+        info = json.load(handle)
+    sample_of_cell = adata.obs["sample"].astype(str).to_numpy()
+    parts = {name: [] for layer in VELOCYTO_LAYERS for name in (layer, f"{layer}_raw")}
+    positions, contamination = [], np.full(adata.n_obs, np.nan)
+    for sample in pd.unique(sample_of_cell):
+        raw = anndata.read_h5ad(os.path.join(velocyto_dir, f"{sample}_cells.h5ad"))
+        corrected = anndata.read_h5ad(os.path.join(velocyto_dir, f"{sample}_decontx.h5ad"))
+        if not (raw.obs_names.equals(corrected.obs_names) and raw.var_names.equals(corrected.var_names)):
+            sys.exit(f"{velocyto_dir}: {sample}_cells.h5ad and {sample}_decontx.h5ad differ; "
+                     f"rerun velocity_decontx.py")
+        cell_positions = np.flatnonzero(sample_of_cell == sample)
+        barcodes = adata.obs_names[cell_positions].str.removeprefix(f"{sample}_")
+        rows = raw.obs_names.get_indexer(barcodes)
+        if (rows < 0).any():
+            sys.exit(f"{sample}: {(rows < 0).sum()} cells (e.g. {barcodes[rows < 0][0]}) are not in "
+                     f"{velocyto_dir}/{sample}_cells.h5ad; rerun velocity_decontx.py")
+        raw_x, corrected_x = raw.X.tocsr()[rows], corrected.X.tocsr()[rows]
+        for layer in VELOCYTO_LAYERS:
+            block = np.flatnonzero(raw.var["layer"].to_numpy() == layer)
+            symbols = pd.Index(raw.var["gene_symbol"].to_numpy()[block])
+            columns = symbols.get_indexer(adata.var_names)
+            if (columns < 0).any():
+                missing = adata.var_names[columns < 0]
+                sys.exit(f"{len(missing)} genes (e.g. {missing[0]}) have no velocyto counts; "
+                         f"were both runs made with the same GTF?")
+            parts[layer].append(corrected_x[:, block[columns]])
+            parts[f"{layer}_raw"].append(raw_x[:, block[columns]])
+        contamination[cell_positions] = corrected.obs["decontX_contamination"].to_numpy()[rows]
+        positions.append(cell_positions)
+    order = np.argsort(np.concatenate(positions))  # back to the cell order of adata
+    for name, matrices in parts.items():
+        adata.layers[name] = scipy.sparse.vstack(matrices, format="csr")[order].astype(np.float32)
+    adata.obs["velocity_contamination"] = contamination
+    adata.uns["velocyto_decontx"] = info
+    print(f"velocyto layers: {velocyto_dir}, median velocity_contamination "
+          f"{np.median(contamination):.3f}")
+
+
 def add_cellassign(adata, cellassign_dir):
     """Cell types from the CellAssign outputs (cell_types.tsv and run_info.json)."""
     table_path = os.path.join(cellassign_dir, "cell_types.tsv")
@@ -275,11 +332,15 @@ def main(argv=None):
     parser.add_argument("--cellassign-dir",
                         help="default: CELLASSIGN_OUTDIR if MARKER_GENES is set")
     parser.add_argument("--no-cellassign", action="store_true", help="leave out cell types")
+    parser.add_argument("--velocyto-dir",
+                        help="default: VELOCYTO_DECONTX_OUTDIR if RUN_VELOCYTO is \"true\"")
+    parser.add_argument("--no-velocyto", action="store_true", help="leave out the velocyto layers")
     parser.add_argument("--output", help="default: $FINAL_OUTDIR/<input name>.h5ad")
     args = parser.parse_args(argv)
 
     conf = read_conf(args.pipeline_conf, ["DOWNSTREAM_OUTDIR", "SAMPLESHEET", "MARKER_GENES",
-                                          "CELLASSIGN_OUTDIR", "FINAL_OUTDIR"])
+                                          "CELLASSIGN_OUTDIR", "FINAL_OUTDIR", "RUN_VELOCYTO",
+                                          "VELOCYTO_DECONTX_OUTDIR"])
     downstream_outdir = args.downstream_outdir or conf["DOWNSTREAM_OUTDIR"]
     input_path = args.input or find_finalized_h5ad(downstream_outdir)
     samplesheet = args.samplesheet or conf_relative(conf["SAMPLESHEET"], args.pipeline_conf)
@@ -287,6 +348,12 @@ def main(argv=None):
     if not args.no_cellassign:
         cellassign_dir = args.cellassign_dir or (conf["CELLASSIGN_OUTDIR"]
                                                  if conf["MARKER_GENES"] else None)
+    velocyto_dir = None
+    if not args.no_velocyto:
+        velocyto_dir = args.velocyto_dir or (conf["VELOCYTO_DECONTX_OUTDIR"]
+                                             if conf["RUN_VELOCYTO"] == "true" else None)
+        if conf["RUN_VELOCYTO"] == "true" and not velocyto_dir:
+            sys.exit("RUN_VELOCYTO is true but VELOCYTO_DECONTX_OUTDIR is not set")
     output = args.output
     if not output:
         if not conf["FINAL_OUTDIR"]:
@@ -297,6 +364,7 @@ def main(argv=None):
     print(f"input:       {input_path}")
     print(f"samplesheet: {samplesheet}")
     print(f"cellassign:  {cellassign_dir or 'skipped'}")
+    print(f"velocyto:    {velocyto_dir or 'skipped'}")
 
     # Check the samplesheet before loading the whole h5ad
     samples = read_h5_elem(input_path, "obs")["sample"].astype(str).unique()
@@ -316,6 +384,8 @@ def main(argv=None):
     add_count_metrics(adata)
     if cellassign_dir:
         add_cellassign(adata, cellassign_dir)
+    if velocyto_dir:
+        add_velocyto(adata, velocyto_dir)
     add_sample_metadata(adata, metadata)
     # As in the current samplesheet; edited after the scdownstream run, it no longer matches
     adata.uns["qc_thresholds"] = pd.DataFrame.from_dict(qc, orient="index").rename_axis("sample")

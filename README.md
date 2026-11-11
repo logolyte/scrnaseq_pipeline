@@ -7,7 +7,7 @@ Slurm wrapper that takes 10x FASTQs to a quality controlled, ambient-corrected, 
 3. **scdownstream** — [nf-core/scdownstream](https://github.com/nf-core/scdownstream), pinned to commit `0048567` on `dev` (no releases yet), with the CellBender and scDblFinder containers replaced (`downstream_processing_pipeline/`)
 4. **CellAssign** (optional) — `scripts/cellassign.py` assigns cell types from a marker gene list with [CellAssign](https://docs.scvi-tools.org/en/stable/user_guide/models/cellassign.html) (scvi-tools)
 5. **Finalize** — `scripts/finalize_adata.py` assembles the final AnnData: scdownstream's output with log1p in `X`, simpler key names, doublet scores, the neighbor graph, cell types and sample metadata
-6. **Velocyto** (optional) — a second nf-core/scrnaseq run producing spliced/unspliced counts (`velocyto_pipeline/`)
+6. **Velocyto** (optional) — a second nf-core/scrnaseq run producing spliced/unspliced counts (`velocyto_pipeline/`), corrected for ambient RNA with decontX (`scripts/velocity_decontx.py`) and added to the final AnnData
 
 ## What each step does
 
@@ -17,8 +17,9 @@ Slurm wrapper that takes 10x FASTQs to a quality controlled, ambient-corrected, 
 | Samplesheet | Passes only the **raw** matrix per sample, so scdownstream does the cell calling itself; chooses CellBender's expected cells and total droplets per sample (`cellbender_priors.py`, see Notes); writes the QC thresholds per sample (the defaults in `scripts/pipeline_common.py`, overridden by QC columns in the samplesheet) |
 | scdownstream | CellBender empty-droplet removal (GPU) → decontX ambient correction (empty droplets as background) → QC (only `min_genes` 200 and `min_counts_cell` 200, see Notes) → scDblFinder doublet removal (on the decontX-corrected counts) → log1p, PCA on the 4000 genes with the highest binomial deviance, kNN graph on 30 PCs, UMAP and Leiden; downstream analysis runs on the ambient-corrected counts |
 | CellAssign | Trained on the marker genes from `MARKER_GENES` only, using the counts scdownstream analysed (`ambient_corrected_decontx`), rounded stochastically to integers, with size factors from all genes; CPU. Fitted 5 times from different seeds, keeping the fit with the best likelihood. Each cell gets its most probable type (see Notes) |
-| Finalize | `X` = log1p (layers `raw_counts` and `ambient_corrected_decontx` kept). Renames `<key>-<res>_leiden` → `leiden_<res>`, `<key>-<res>:entropy` → `leiden_<res>_sample_entropy`, `X_<key>_umap` → `X_umap`, `X_pca_pca` → `X_pca`, `deviance:*` → `*`. Adds `doublet_score` (scDblFinder), `ambient_fraction_removed`, `total_counts_raw`, `n_genes_by_counts_raw`, the CellAssign `cell_type`, `cell_type_probability` and `obsm['cellassign_probabilities']`, the scdownstream kNN graph (`obsp`, `uns['neighbors']`), sample metadata from the samplesheet, the QC thresholds per sample (`uns['qc_thresholds']`, as in the current samplesheet) and provenance (`uns['pipeline']`). Drops the duplicates `n_counts`, `n_genes` and the placeholders `donor`, `batch`, `condition`, `label` and var `intersection` (see Notes) |
+| Finalize | `X` = log1p (layers `raw_counts` and `ambient_corrected_decontx` kept). Renames `<key>-<res>_leiden` → `leiden_<res>`, `<key>-<res>:entropy` → `leiden_<res>_sample_entropy`, `X_<key>_umap` → `X_umap`, `X_pca_pca` → `X_pca`, `deviance:*` → `*`. Adds `doublet_score` (scDblFinder), `ambient_fraction_removed`, `total_counts_raw`, `n_genes_by_counts_raw`, the CellAssign `cell_type`, `cell_type_probability` and `obsm['cellassign_probabilities']`, the scdownstream kNN graph (`obsp`, `uns['neighbors']`), with velocyto the layers `spliced`, `unspliced`, `ambiguous` (decontX-corrected; scVelo's default names) and `spliced_raw`, `unspliced_raw`, `ambiguous_raw` with `obs['velocity_contamination']`, sample metadata from the samplesheet, the QC thresholds per sample (`uns['qc_thresholds']`, as in the current samplesheet) and provenance (`uns['pipeline']`). Drops the duplicates `n_counts`, `n_genes` and the placeholders `donor`, `batch`, `condition`, `label` and var `intersection` (see Notes) |
 | Velocyto | `Gene Velocyto` features, same STAR settings; the h5ads carry `spliced`/`unspliced`/`ambiguous` layers |
+| Velocyto decontX | Per sample, one decontX run on the three layers stacked into one matrix (each gene three times), for the cells CellBender called, with the velocyto run's other droplets as background; decontX clusters the cells itself, as in scdownstream. Same image as scdownstream's decontX (`containers/decontx/`). See Notes |
 
 ## Setup
 
@@ -38,7 +39,9 @@ Slurm wrapper that takes 10x FASTQs to a quality controlled, ambient-corrected, 
 | `containers/cellbender/` | CellBender 0.4.0 on PyTorch 2.4.1/CUDA 12.1. Replaces the scdownstream module's GPU image (CellBender 0.3.2), which doesn't run on H100 GPUs. |
 | `containers/scdblfinder/` | scDblFinder 1.24.10. Replaces the module's 1.24.0, which calls 2–3× too few doublets with xgboost ≥ 3.1 ([nf-core/scdownstream#382](https://github.com/nf-core/scdownstream/issues/382)). |
 
-`setup.sh` builds each `containers/<name>/<image>.def` into `$CONTAINER_DIR/<image>.sif`, and `downstream_processing_pipeline/slurm.config` points the two processes at those images.
+| `containers/decontx/` | R 4.5.3 with celda 1.26.0 and anndataR 1.0.2: the image of scdownstream's decontX module (its Seqera Containers tag), for `scripts/velocity_decontx.R`. The build only checks the versions. |
+
+`setup.sh` builds each `containers/<name>/<image>.def` into `$CONTAINER_DIR/<image>.sif`, and `downstream_processing_pipeline/slurm.config` points the CellBender and scDblFinder processes at those images. After pulling a new recipe, rerun `setup.sh`; it builds only the images that are missing.
 - **Lock files:** each recipe installs exact versions from its `lock.txt`. If a recipe has no `lock.txt` yet, the first build writes one from the image; commit it so later builds are identical.
 - **Rebuilding:** delete the `.sif` and rerun `setup.sh`.
 - **Updating the conda environment:** `setup.sh` skips an existing `scrnaseq` environment. After `envs/` changes (e.g. the CellAssign packages were added), run `conda env update -n scrnaseq -f envs/scrnaseq.lock.yml --prune`.
@@ -70,15 +73,20 @@ CellAssign (if `MARKER_GENES` is set) starts after scdownstream, and `finalize_a
 
 `python scripts/cellassign.py --help` and `python scripts/finalize_adata.py --help` list all options. `finalize_adata.py` reads only the CellAssign outputs (`cell_types.tsv`, `run_info.json`), so rebuilding the final h5ad, e.g. after adding samplesheet columns, does not refit CellAssign. It stops if the CellAssign cells differ from the scdownstream cells, i.e. CellAssign is from an older scdownstream run.
 
-The velocyto run (if `RUN_VELOCYTO="true"`) is submitted independently of the other jobs. To run it on its own:
+The velocyto run (if `RUN_VELOCYTO="true"`) starts right away, in parallel with the other jobs. Its ambient correction waits for both velocyto and scdownstream, and `finalize_adata.py` also waits for the correction. To run the steps on their own:
 
 ```bash
 (
   set -a; source pipeline.conf; set +a
   export PIPELINE_CONF="$PWD/pipeline.conf"
+  conda activate scrnaseq
   sbatch --chdir=velocyto_pipeline \
          --output="$PWD/slurm_logs/velocyto_%j.out" --error="$PWD/slurm_logs/velocyto_%j.err" \
          velocyto_pipeline/velocyto_nfcore.sh
+  # once velocyto and scdownstream have finished:
+  sbatch --chdir=. --output=slurm_logs/velocity_decontx_%j.out --error=slurm_logs/velocity_decontx_%j.err \
+         scripts/velocity_decontx.py [--samples BEM331 BEM338]
+  # then rebuild the final h5ad (finalize_adata.py, see above)
 )
 ```
 
@@ -96,6 +104,7 @@ All under `PROJECT_ROOT`:
 | `results/scdownstream/09_finalized/` | scdownstream's AnnData and provenance; `finalize_adata.py` reads it and the intermediates in `02_quality_control/` and `05_cluster_dimred/` (`save_intermediates` must stay on) |
 | `results/cellassign/` | `cell_types.tsv` (per cell: sample, cell type, its probability, one probability column per type), `cell_type_counts.tsv`, `run_info.json` (settings and cell types, becomes `uns['cellassign']`), `restarts.tsv` (one row per fit), `training_history.png`, and the marker list used (`markers.yaml`, `marker_matrix.tsv`) |
 | `results/velocyto/star/mtx_conversions/` | Same layout as starsolo, with velocity layers |
+| `results/velocyto_decontx/` | Per sample `<sample>_cells.h5ad` (stacked velocyto counts of the CellBender cells) and `<sample>_decontx.h5ad` (corrected, with `decontX_contamination`), `run_info.json`; read by `finalize_adata.py` |
 | `work/{starsolo,scdownstream,velocyto}/` | Nextflow work dirs (delete when done) |
 
 ## Marker gene sets
@@ -120,7 +129,8 @@ Name new lists by species and tissue (e.g. `mouse_glomerulus.yaml`) and point `M
 
 - **CellAssign fits can merge cell types:** depending on its random start, a fit can end in a local optimum where two cell types are merged into one and the other stays (nearly) empty. `cellassign.py` therefore fits `--n-restarts` times (default 5) and keeps the fit with the lowest negative log-likelihood. `restarts.tsv` and the job log show how far each fit agrees with the best one. If no other fit agrees on at least 95% of cells, the log warns that a better optimum may have been missed. Then check `cell_type_counts.tsv` for an expected type that is empty, and rerun with more restarts.
 - **CellAssign has no "other" class:** every cell is assigned to one of the listed types, so cells of types missing from the marker list are forced into the closest one. List every type you expect in the tissue, and check the probabilities: `--min-probability` (e.g. 0.9) labels cells below it `Unassigned`. All probabilities are saved, so you can also set a cut-off later in the analysis.
-- **Velocyto counts:** the velocyto run's `X` counts exons only (STAR requires `Gene` for `Velocyto`, and `Gene` can't be combined with `GeneFull_Ex50pAS` here). Use only its `spliced`/`unspliced` layers. Take them from the per-sample **raw** h5ads and match them to the scdownstream cells by sample and barcode. Correct the layers for ambient RNA before running scVelo. In snRNA-seq, ambient RNA is mostly spliced.
+- **Velocyto counts:** the velocyto run's `X` counts exons only (STAR requires `Gene` for `Velocyto`, and `Gene` can't be combined with `GeneFull_Ex50pAS` here). Only its `spliced`/`unspliced`/`ambiguous` layers are used; `finalize_adata.py` matches them to the scdownstream cells by sample and barcode and to the genes by symbol.
+- **Ambient correction of the velocyto counts:** in nuclei, ambient RNA comes mostly from the cytoplasm of lysed cells and is mostly spliced, so uncorrected contamination inflates the spliced counts and biases the spliced/unspliced ratios scVelo fits. `velocity_decontx.py` runs decontX once per sample on the three layers stacked side by side (`<gene id>_spliced`, `_unspliced`, `_ambiguous`): one contamination estimate per cell and one ambient profile over all three layers, learnt from the empty droplets. Where the ambient RNA is mostly spliced, the spliced layer is corrected more than the unspliced (in a test on 300 Lmx1b cells: 34% of spliced, 8% of unspliced counts removed). Correcting the layers separately would give each cell unrelated estimates per layer, and scaling both by the main decontX run would remove the same share from spliced and unspliced. `velocity_contamination` is decontX's estimate for the stacked matrix, so it is not the same quantity as `ambient_fraction_removed`.
 - **No `--twopassMode Basic`:** a STAR bug breaks it with `GeneFull_Ex50pAS` ([STAR#1533](https://github.com/alexdobin/STAR/issues/1533)). `validation.ignoreParams` lets the `star_feature` value through nf-core's parameter check.
 - **CellBender settings per sample:** `make_scdownstream_samplesheet.py` calls `cellbender_priors.py` for each sample and writes `downstream_processing_pipeline/cellbender_priors.tsv`. `slurm.config` reads `--expected-cells` and `--total-droplets-included` from that file by sample name, because scdownstream only passes `expected_cells` from the samplesheet to CellBender. The run stops if a sample is missing from the file.
   - `expected_cells` = 0.75 × the STARsolo EmptyDrops cells. This keeps borderline EmptyDrops calls out of CellBender's cell prior; CellBender still calls more cells when the data support them.

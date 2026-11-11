@@ -17,6 +17,10 @@ if [[ -z "${SAMPLESHEET:-}" || ! -f "$SAMPLESHEET_PATH" ]]; then
     echo "SAMPLESHEET ${SAMPLESHEET:-(not set)} not found (looked for $SAMPLESHEET_PATH)" >&2
     exit 1
 fi
+if [[ "${RUN_VELOCYTO:-false}" == true && ! -f "${CONTAINER_DIR:-}/decontx-celda-1.26.0.sif" ]]; then
+    echo "RUN_VELOCYTO is true but ${CONTAINER_DIR:-}/decontx-celda-1.26.0.sif is missing; run setup.sh" >&2
+    exit 1
+fi
 if [[ -n "${MARKER_GENES:-}" && ! -f "$MARKER_GENES" ]]; then
     echo "MARKER_GENES file $MARKER_GENES not found" >&2
     exit 1
@@ -59,11 +63,17 @@ if [[ -n "${MARKER_GENES:-}" ]]; then
     FINAL_DEPENDENCY=$CELLASSIGN_JOB
 fi
 
-FINAL_JOB=$(submit finalize . scripts/finalize_adata.py \
-            --dependency=afterok:"$FINAL_DEPENDENCY" --kill-on-invalid-dep=yes)
-echo "finalize:     $FINAL_JOB"
-
+# The velocyto run realigns all samples, independently of the other jobs; its
+# ambient correction needs the CellBender cells from scdownstream
 if [[ "${RUN_VELOCYTO:-false}" == true ]]; then
     VELO_JOB=$(submit velocyto velocyto_pipeline velocyto_pipeline/velocyto_nfcore.sh)
     echo "velocyto:     $VELO_JOB"
+    VELO_DECONTX_JOB=$(submit velocity_decontx . scripts/velocity_decontx.py \
+                       --dependency=afterok:"$VELO_JOB:$DOWN_JOB" --kill-on-invalid-dep=yes)
+    echo "velo decontX: $VELO_DECONTX_JOB"
+    FINAL_DEPENDENCY="$FINAL_DEPENDENCY:$VELO_DECONTX_JOB"
 fi
+
+FINAL_JOB=$(submit finalize . scripts/finalize_adata.py \
+            --dependency=afterok:"$FINAL_DEPENDENCY" --kill-on-invalid-dep=yes)
+echo "finalize:     $FINAL_JOB"
