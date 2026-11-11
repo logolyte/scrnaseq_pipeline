@@ -42,7 +42,7 @@ submit() {   # submit <name> <chdir> <script> [sbatch options...]
 STAR_JOB=$(submit starsolo starsolo_pipeline starsolo_pipeline/starsolo_nfcore.sh)
 echo "starsolo:     $STAR_JOB"
 
-SHEET_JOB=$(submit samplesheet . make_scdownstream_samplesheet.py \
+SHEET_JOB=$(submit samplesheet . scripts/make_scdownstream_samplesheet.py \
             --dependency=afterok:"$STAR_JOB" --kill-on-invalid-dep=yes)
 echo "samplesheet:  $SHEET_JOB"
 
@@ -53,13 +53,13 @@ echo "scdownstream: $DOWN_JOB"
 
 FINAL_DEPENDENCY=$DOWN_JOB
 if [[ -n "${MARKER_GENES:-}" ]]; then
-    CELLASSIGN_JOB=$(submit cellassign . cellassign.py \
+    CELLASSIGN_JOB=$(submit cellassign . scripts/cellassign.py \
                      --dependency=afterok:"$DOWN_JOB" --kill-on-invalid-dep=yes)
     echo "cellassign:   $CELLASSIGN_JOB"
     FINAL_DEPENDENCY=$CELLASSIGN_JOB
 fi
 
-FINAL_JOB=$(submit finalize . finalize_adata.py \
+FINAL_JOB=$(submit finalize . scripts/finalize_adata.py \
             --dependency=afterok:"$FINAL_DEPENDENCY" --kill-on-invalid-dep=yes)
 echo "finalize:     $FINAL_JOB"
 

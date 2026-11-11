@@ -11,7 +11,7 @@
 Submitted directly, no wrapper needed, since the #SBATCH directives above are
 ordinary Python comments:
 
-    sbatch --chdir=. --dependency=afterok:$STAR_JOB make_scdownstream_samplesheet.py
+    sbatch --chdir=. --dependency=afterok:$STAR_JOB scripts/make_scdownstream_samplesheet.py
 
 Without --starsolo-outdir and --samplesheet, STARSOLO_OUTDIR and SAMPLESHEET
 are taken from pipeline.conf ($PIPELINE_CONF if set, else ./pipeline.conf);
@@ -21,6 +21,11 @@ Only the raw matrices are listed. scdownstream branches on whether 'filtered'
 is set: when it is, the sample is treated as already filtered and CellBender
 never runs empty-droplet removal. Giving it just 'unfiltered' is what makes
 CellBender call the cells.
+
+QC thresholds are pipeline_common.QC_DEFAULTS; samplesheet columns with the
+same names (scdownstream's) override the cell filters per sample, and an empty
+cell keeps the default. Columns that look like QC filters but are not one of
+them (e.g. 'max_mito_percent') give a warning and are not applied.
 
 CellBender's settings are chosen per sample by cellbender_priors.py (see there):
 expected_cells = 0.75 x the EmptyDrops cells, total_droplets = the barcodes at or
@@ -35,7 +40,7 @@ activates it before submitting).
 
     pipeline.conf                                           <- read (STARSOLO_OUTDIR, SAMPLESHEET)
     starsolo_pipeline/nf-params.json                        <- read (aligner)
-    --samplesheet                                           <- read (sample names)
+    --samplesheet                                           <- read (sample names, QC columns)
     --starsolo-outdir                                       <- read (STARsolo output)
     downstream_processing_pipeline/samplesheet.csv          <- written
     downstream_processing_pipeline/cellbender_priors.tsv    <- written
@@ -48,11 +53,12 @@ import os
 import sys
 
 # sbatch runs a copy of this script from Slurm's spool directory, so look for
-# cellbender_priors.py and pipeline_common.py next to the original and in the
-# project root (cwd)
-sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]
+# cellbender_priors.py and pipeline_common.py next to the original and in
+# scripts/ of the project root (cwd)
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.getcwd(), "scripts")]
 import cellbender_priors  # noqa: E402
-from pipeline_common import DEFAULT_CONF, conf_relative, read_conf  # noqa: E402
+from pipeline_common import (DEFAULT_CONF, QC_DEFAULTS, conf_relative, read_conf,  # noqa: E402
+                             sample_qc)
 
 DEFAULT_PARAMS = "starsolo_pipeline/nf-params.json"
 DEFAULT_OUTPUT = "downstream_processing_pipeline/samplesheet.csv"
@@ -72,23 +78,9 @@ DONOR_COL = "sample"
 # --use_ambient_corrected_counts with false.
 USE_AMBIENT_CORRECTED_COUNTS = "true"
 
-# Lenient filtering to remove debris, more strict filtering can be done after pipieline
-QC = {
-    "min_genes": 200,         # Removes near-empty droplets in samples with little ambient RNA
-    "min_counts_cell": 200,   # >= 200 UMI left after DecontX, removes ambient-like debris
-    "min_cells": 0,
-    "min_counts_gene": 0,
-    "max_mito_percentage": 100,
-    "min_ribo_percentage": 0,
-    "max_hb_percentage": 100,
-    "log1p_total_counts_nmads": 0,
-    "log1p_n_genes_by_counts_nmads": 0,
-    "pct_counts_in_top_20_genes_nmads": 0,
-    "pct_counts_mt_nmads": 0,
-}
-
+# QC thresholds: pipeline_common.QC_DEFAULTS, overridable per sample in the samplesheet
 COLUMNS = ["sample", "unfiltered", "symbol_col", "batch_col", "donor_col",
-           "expected_cells", "use_ambient_corrected_counts"] + list(QC)
+           "expected_cells", "use_ambient_corrected_counts"] + list(QC_DEFAULTS)
 
 
 def read_aligner(params_path):
@@ -104,7 +96,7 @@ def read_samples(path):
     return list(dict.fromkeys(names))
 
 
-def build_rows(outdir, aligner, samples):
+def build_rows(outdir, aligner, samples, qc):
     """Samplesheet rows and CellBender settings (cellbender_priors.COLUMNS) per sample."""
     conversions = os.path.join(outdir, aligner, "mtx_conversions")
     rows, priors = [], []
@@ -133,7 +125,7 @@ def build_rows(outdir, aligner, samples):
             "expected_cells": setting["expected_cells"],
             "use_ambient_corrected_counts": USE_AMBIENT_CORRECTED_COUNTS,
         }
-        row.update(QC)
+        row.update(qc[sample])
         rows.append(row)
 
     return rows, priors
@@ -165,7 +157,14 @@ def main(argv=None):
     outdir = outdir.rstrip("/")
     print(f"starsolo outdir: {outdir}", file=sys.stderr)
     print(f"samplesheet:     {samplesheet}", file=sys.stderr)
-    rows, priors = build_rows(outdir, read_aligner(args.params), read_samples(samplesheet))
+    samples = read_samples(samplesheet)
+    qc = sample_qc(samplesheet, samples)
+    for sample in samples:
+        changed = {k: v for k, v in qc[sample].items() if v != QC_DEFAULTS[k]}
+        if changed:
+            print(f"{sample}: QC " + ", ".join(f"{k} {v}" for k, v in changed.items()),
+                  file=sys.stderr)
+    rows, priors = build_rows(outdir, read_aligner(args.params), samples, qc)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w", newline="") as handle:

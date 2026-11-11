@@ -10,7 +10,7 @@
 
 Can be submitted directly with sbatch, from the project root:
 
-    sbatch --chdir=. finalize_adata.py
+    sbatch --chdir=. scripts/finalize_adata.py
 
 Defaults come from pipeline.conf ($PIPELINE_CONF if set, else ./pipeline.conf):
 
@@ -32,7 +32,7 @@ Changes to the scdownstream h5ad:
            total_counts_raw and n_genes_by_counts_raw (the QC columns from
            scdownstream are computed on the corrected counts), cell_type and
            cell_type_probability (CellAssign), and every samplesheet column that is
-           not an nf-core/scrnaseq column, as per-sample metadata.
+           neither an nf-core/scrnaseq column nor a QC column, as per-sample metadata.
            renamed: <key>-<res>_leiden -> leiden_<res>,
            <key>-<res>:entropy -> leiden_<res>_sample_entropy (key e.g. pca-global).
            dropped: n_counts and n_genes (duplicates of total_counts and
@@ -44,7 +44,8 @@ Changes to the scdownstream h5ad:
   obsp     connectivities and distances: the graph scdownstream computed its UMAP
            and Leiden clusters from (05_cluster_dimred/*/neighbors/).
   uns      colors renamed with their obs column; added: neighbors, cellassign
-           (the run_info.json of the CellAssign run) and pipeline (provenance).
+           (the run_info.json of the CellAssign run), qc_thresholds (per sample, the
+           defaults with the samplesheet's QC columns applied) and pipeline (provenance).
 """
 
 import argparse
@@ -57,19 +58,16 @@ import subprocess
 import sys
 
 # sbatch runs a copy of this script from Slurm's spool directory, so look for
-# pipeline_common.py next to the original and in the project root (cwd)
-sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]
-from pipeline_common import DEFAULT_CONF, conf_relative, find_finalized_h5ad, read_conf  # noqa: E402
+# pipeline_common.py next to the original and in scripts/ of the project root (cwd)
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.getcwd(), "scripts")]
+from pipeline_common import (DEFAULT_CONF, SAMPLE_QC_COLUMNS, conf_relative,  # noqa: E402
+                             find_finalized_h5ad, read_conf, read_sample_columns, sample_qc)
 
 import anndata  # noqa: E402
 import h5py  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-# Columns nf-core/scrnaseq 4.2.0 reads from the samplesheet (assets/schema_input.json);
-# every other column is sample metadata
-SCRNASEQ_COLUMNS = {"sample", "fastq_1", "fastq_2", "fastq_barcode", "expected_cells",
-                    "seq_center", "sample_type", "feature_type"}
 DROP_OBS = ["n_counts", "n_genes", "donor", "batch", "condition", "label"]
 DROP_VAR = ["intersection"]
 OBSM_RENAMES = {"X_pca_pca": "X_pca"}
@@ -188,18 +186,10 @@ def add_count_metrics(adata):
 
 
 def read_sample_metadata(path, samples):
-    """Per-sample metadata: the samplesheet columns nf-core/scrnaseq does not use."""
-    sheet = pd.read_csv(path, dtype=str, keep_default_na=False)
-    if "sample" not in sheet:
-        sys.exit(f"{path} has no 'sample' column")
-    columns = [c for c in sheet.columns if c not in SCRNASEQ_COLUMNS]
-    metadata = sheet[["sample", *columns]].replace("", pd.NA)
-    # Lanes of one sample are separate rows, which must agree
-    n_values = metadata.groupby("sample")[columns].nunique()
-    conflicts = [f"{s}: {c}" for c in columns for s in n_values.index[n_values[c] > 1]]
-    if conflicts:
-        sys.exit(f"{path}: rows of one sample have different values for {', '.join(conflicts)}")
-    metadata = metadata.drop_duplicates("sample").set_index("sample")
+    """Per-sample metadata: the samplesheet columns that are neither nf-core/scrnaseq's nor QC."""
+    metadata = read_sample_columns(path)
+    metadata = metadata.drop(columns=[c for c in SAMPLE_QC_COLUMNS if c in metadata])
+    columns = list(metadata.columns)
     missing = sorted(set(samples) - set(metadata.index))
     if missing:
         sys.exit(f"samples not in {path}: {', '.join(missing)}")
@@ -311,6 +301,7 @@ def main(argv=None):
     # Check the samplesheet before loading the whole h5ad
     samples = read_h5_elem(input_path, "obs")["sample"].astype(str).unique()
     metadata = read_sample_metadata(samplesheet, samples)
+    qc = sample_qc(samplesheet, samples)  # also warns about misnamed QC columns
 
     adata = anndata.read_h5ad(input_path)
     if not adata.obs_names.is_unique:
@@ -326,6 +317,8 @@ def main(argv=None):
     if cellassign_dir:
         add_cellassign(adata, cellassign_dir)
     add_sample_metadata(adata, metadata)
+    # As in the current samplesheet; edited after the scdownstream run, it no longer matches
+    adata.uns["qc_thresholds"] = pd.DataFrame.from_dict(qc, orient="index").rename_axis("sample")
     adata.uns["pipeline"] = provenance(input_path, downstream_outdir, samplesheet, cellassign_dir)
 
     os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)

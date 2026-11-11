@@ -3,10 +3,10 @@
 Slurm wrapper that takes 10x FASTQs to a quality controlled, ambient-corrected, doublet-free AnnData, optionally with cell types:
 
 1. **STARsolo** — [nf-core/scrnaseq](https://nf-co.re/scrnaseq) 4.2.0 (`starsolo_pipeline/`)
-2. **Samplesheet** — `make_scdownstream_samplesheet.py` builds the scdownstream input from step 1
+2. **Samplesheet** — `scripts/make_scdownstream_samplesheet.py` builds the scdownstream input from step 1
 3. **scdownstream** — [nf-core/scdownstream](https://github.com/nf-core/scdownstream), pinned to commit `0048567` on `dev` (no releases yet), with the CellBender and scDblFinder containers replaced (`downstream_processing_pipeline/`)
-4. **CellAssign** (optional) — `cellassign.py` assigns cell types from a marker gene list with [CellAssign](https://docs.scvi-tools.org/en/stable/user_guide/models/cellassign.html) (scvi-tools)
-5. **Finalize** — `finalize_adata.py` assembles the final AnnData: scdownstream's output with log1p in `X`, simpler key names, doublet scores, the neighbor graph, cell types and sample metadata
+4. **CellAssign** (optional) — `scripts/cellassign.py` assigns cell types from a marker gene list with [CellAssign](https://docs.scvi-tools.org/en/stable/user_guide/models/cellassign.html) (scvi-tools)
+5. **Finalize** — `scripts/finalize_adata.py` assembles the final AnnData: scdownstream's output with log1p in `X`, simpler key names, doublet scores, the neighbor graph, cell types and sample metadata
 6. **Velocyto** (optional) — a second nf-core/scrnaseq run producing spliced/unspliced counts (`velocyto_pipeline/`)
 
 ## What each step does
@@ -14,10 +14,10 @@ Slurm wrapper that takes 10x FASTQs to a quality controlled, ambient-corrected, 
 | Step | Settings |
 |---|---|
 | STARsolo | `GeneFull_Ex50pAS` features (exons + introns, for nuclei), `EmptyDrops_CR` cell calling, Cell Ranger UMI dedup (`1MM_CR`) and multi-gene UMI filtering, CellBender and RDS conversion skipped |
-| Samplesheet | Passes only the **raw** matrix per sample, so scdownstream does the cell calling itself; chooses CellBender's expected cells and total droplets per sample (`cellbender_priors.py`, see Notes) |
+| Samplesheet | Passes only the **raw** matrix per sample, so scdownstream does the cell calling itself; chooses CellBender's expected cells and total droplets per sample (`cellbender_priors.py`, see Notes); writes the QC thresholds per sample (the defaults in `scripts/pipeline_common.py`, overridden by QC columns in the samplesheet) |
 | scdownstream | CellBender empty-droplet removal (GPU) → decontX ambient correction (empty droplets as background) → QC (only `min_genes` 200 and `min_counts_cell` 200, see Notes) → scDblFinder doublet removal (on the decontX-corrected counts) → log1p, PCA on the 4000 genes with the highest binomial deviance, kNN graph on 30 PCs, UMAP and Leiden; downstream analysis runs on the ambient-corrected counts |
 | CellAssign | Trained on the marker genes from `MARKER_GENES` only, using the counts scdownstream analysed (`ambient_corrected_decontx`), rounded stochastically to integers, with size factors from all genes; CPU. Fitted 5 times from different seeds, keeping the fit with the best likelihood. Each cell gets its most probable type (see Notes) |
-| Finalize | `X` = log1p (layers `raw_counts` and `ambient_corrected_decontx` kept). Renames `<key>-<res>_leiden` → `leiden_<res>`, `<key>-<res>:entropy` → `leiden_<res>_sample_entropy`, `X_<key>_umap` → `X_umap`, `X_pca_pca` → `X_pca`, `deviance:*` → `*`. Adds `doublet_score` (scDblFinder), `ambient_fraction_removed`, `total_counts_raw`, `n_genes_by_counts_raw`, the CellAssign `cell_type`, `cell_type_probability` and `obsm['cellassign_probabilities']`, the scdownstream kNN graph (`obsp`, `uns['neighbors']`), sample metadata from the samplesheet and provenance (`uns['pipeline']`). Drops the duplicates `n_counts`, `n_genes` and the placeholders `donor`, `batch`, `condition`, `label` and var `intersection` (see Notes) |
+| Finalize | `X` = log1p (layers `raw_counts` and `ambient_corrected_decontx` kept). Renames `<key>-<res>_leiden` → `leiden_<res>`, `<key>-<res>:entropy` → `leiden_<res>_sample_entropy`, `X_<key>_umap` → `X_umap`, `X_pca_pca` → `X_pca`, `deviance:*` → `*`. Adds `doublet_score` (scDblFinder), `ambient_fraction_removed`, `total_counts_raw`, `n_genes_by_counts_raw`, the CellAssign `cell_type`, `cell_type_probability` and `obsm['cellassign_probabilities']`, the scdownstream kNN graph (`obsp`, `uns['neighbors']`), sample metadata from the samplesheet, the QC thresholds per sample (`uns['qc_thresholds']`, as in the current samplesheet) and provenance (`uns['pipeline']`). Drops the duplicates `n_counts`, `n_genes` and the placeholders `donor`, `batch`, `condition`, `label` and var `intersection` (see Notes) |
 | Velocyto | `Gene Velocyto` features, same STAR settings; the h5ads carry `spliced`/`unspliced`/`ambiguous` layers |
 
 ## Setup
@@ -25,7 +25,8 @@ Slurm wrapper that takes 10x FASTQs to a quality controlled, ambient-corrected, 
 1. Edit `pipeline.conf`: `PROJECT_ROOT`, `SBATCH_ACCOUNT`, `CONTAINER_DIR`, `SAMPLESHEET`, `PROTOCOL`, `FASTA_PATH`, `GTF_PATH`, `STAR_INDEX_PATH`, `RUN_VELOCYTO`, `MARKER_GENES`. The STAR index must have been built from that FASTA/GTF. Leave `MARKER_GENES` empty to skip cell type assignment.
 2. Run `bash setup.sh` once (in an interactive job if your cluster doesn't allow builds on the login node). It creates the conda environment and builds the pipeline's own containers. It skips anything that already exists.
 3. Fill in the samplesheet (`SAMPLESHEET`, default `samplesheet.csv` next to `pipeline.conf`; a relative path is relative to the directory of `pipeline.conf`): `sample,fastq_1,fastq_2`, one row per lane, with lanes of one sample sharing the `sample` name. Leave out `expected_cells`: if it's set, nf-core/scrnaseq adds its own `--soloCellFilter CellRanger2.2`.
-   - **Sample metadata:** add any other columns (e.g. `condition,age_weeks,time_days`). nf-core/scrnaseq ignores them, and `finalize_adata.py` copies them into `obs` for every cell of the sample. Lanes of one sample must have the same values. Columns where every value is a number become numeric, the others categorical, with the categories in samplesheet order. The columns nf-core/scrnaseq reads (`fastq_barcode`, `expected_cells`, `seq_center`, `sample_type`, `feature_type`) are not copied, and a name that already exists in `obs` (e.g. `total_counts`) stops the job.
+   - **QC per sample:** columns named like scdownstream's cell filters override the pipeline's default for that sample: `min_genes`, `min_counts_cell`, `max_mito_percentage`, `min_ribo_percentage`, `max_hb_percentage`, `log1p_total_counts_nmads`, `log1p_n_genes_by_counts_nmads`, `pct_counts_in_top_20_genes_nmads`, `pct_counts_mt_nmads` (0 turns an `_nmads` filter off). An empty cell keeps the default; values must be numbers ≥ 0 (whole numbers except the `_nmads` columns, percentages ≤ 100). The gene filters `min_cells` and `min_counts_gene` can't be set per sample. A column that looks like a QC filter but isn't one of these (e.g. `max_mito_percent`, or `min_cells`) gives a warning and is not applied; it ends up in `obs` like other metadata. Changing a sample's QC value reruns all of scdownstream for that sample on `-resume`, CellBender included, because the thresholds are part of the sample's Nextflow metadata.
+   - **Sample metadata:** add any other columns (e.g. `condition,age_weeks,time_days`). nf-core/scrnaseq ignores them, and `finalize_adata.py` copies them into `obs` for every cell of the sample. Lanes of one sample must have the same values. Columns where every value is a number become numeric, the others categorical, with the categories in samplesheet order. The columns nf-core/scrnaseq reads (`fastq_barcode`, `expected_cells`, `seq_center`, `sample_type`, `feature_type`) and the QC columns are not copied, and a name that already exists in `obs` (e.g. `total_counts`) stops the job.
 4. Check the cluster settings in the `slurm.config` files: partition `smp`, 64 CPUs / 72 GB for `process_high`. The CellBender GPU job uses the `gpu` queue and an H100 slice (`--gpus=h100_1g.12gb:1`), hardcoded in `downstream_processing_pipeline/slurm.config`.
 
 ### Environments and containers
@@ -60,14 +61,14 @@ CellAssign (if `MARKER_GENES` is set) starts after scdownstream, and `finalize_a
   export PIPELINE_CONF="$PWD/pipeline.conf"
   conda activate scrnaseq
   sbatch --chdir=. --output=slurm_logs/cellassign_%j.out --error=slurm_logs/cellassign_%j.err \
-         cellassign.py [--markers marker_gene_sets/other.yaml] [--min-probability 0.9] [--outdir ...]
+         scripts/cellassign.py [--markers marker_gene_sets/other.yaml] [--min-probability 0.9] [--outdir ...]
   # once it has finished (or chain it with --dependency=afterok:<job id>):
   sbatch --chdir=. --output=slurm_logs/finalize_%j.out --error=slurm_logs/finalize_%j.err \
-         finalize_adata.py [--cellassign-dir ...] [--output ...]
+         scripts/finalize_adata.py [--cellassign-dir ...] [--output ...]
 )
 ```
 
-`python cellassign.py --help` and `python finalize_adata.py --help` list all options. `finalize_adata.py` reads only the CellAssign outputs (`cell_types.tsv`, `run_info.json`), so rebuilding the final h5ad, e.g. after adding samplesheet columns, does not refit CellAssign. It stops if the CellAssign cells differ from the scdownstream cells, i.e. CellAssign is from an older scdownstream run.
+`python scripts/cellassign.py --help` and `python scripts/finalize_adata.py --help` list all options. `finalize_adata.py` reads only the CellAssign outputs (`cell_types.tsv`, `run_info.json`), so rebuilding the final h5ad, e.g. after adding samplesheet columns, does not refit CellAssign. It stops if the CellAssign cells differ from the scdownstream cells, i.e. CellAssign is from an older scdownstream run.
 
 The velocyto run (if `RUN_VELOCYTO="true"`) is submitted independently of the other jobs. To run it on its own:
 
@@ -125,10 +126,10 @@ Name new lists by species and tissue (e.g. `mouse_glomerulus.yaml`) and point `M
   - `expected_cells` = 0.75 × the STARsolo EmptyDrops cells. This keeps borderline EmptyDrops calls out of CellBender's cell prior; CellBender still calls more cells when the data support them.
   - `total_droplets` = the number of barcodes with at least as many UMI as the empty-droplet peak. The peak is the tallest peak of the log-UMI histogram of non-EmptyDrops barcodes with ≥ 10 UMI, which avoids the low plateau of barcode-swapped barcodes. This puts CellBender's empty prior on the empty droplets.
   - Without a usable peak (none, or below 20 UMI), `total_droplets` falls back to EmptyDrops cells + 20,000.
-  - **Check before running scdownstream:** the samplesheet job's log and the file's `warnings` column. The codes are explained at the top of `cellbender_priors.py`. `POOR_SEPARATION` and `EMPTYDROPS_CALLS_EMPTIES` mean no prior settings will give clean cell calls, so inspect the sample (damage, ambient RNA, depth). `LARGE_TOTAL` means CellBender will be slow and may not fit on the GPU.
+  - **Check before running scdownstream:** the samplesheet job's log and the file's `warnings` column. The codes are explained at the top of `scripts/cellbender_priors.py`. `POOR_SEPARATION` and `EMPTYDROPS_CALLS_EMPTIES` mean no prior settings will give clean cell calls, so inspect the sample (damage, ambient RNA, depth). `LARGE_TOTAL` means CellBender will be slow and may not fit on the GPU.
   - The thresholds were tuned on high-ambient snRNA-seq (mouse kidney). In low-ambient data, e.g. single-cell, expect more fallbacks; check the first run.
 - **Per-sample `use_ambient_corrected_counts`:** the samplesheet builder writes this column for every sample. If it's empty, scdownstream silently turns ambient-corrected counts off.
-- **QC is deliberately lenient:** the pipeline only removes empty droplets and debris, and stricter filtering is left to each analysis. Both filters are computed on the decontX-corrected counts.
+- **QC is deliberately lenient:** by default the pipeline only removes empty droplets and debris, and stricter filtering is left to each analysis (or set per sample in the samplesheet, see Setup). Both default filters are computed on the decontX-corrected counts.
   - `min_counts_cell` 200 removes droplets with fewer than 200 UMI left after ambient correction. These are mostly ambient RNA, such as debris.
   - `min_genes` 200 effectively counts raw genes, because decontX's fractional counts keep every detected gene above zero. It has no effect when the empty droplets already have more than 200 genes (high-ambient nuclei), but it removes near-empty droplets in single-cell data.
 - **No mitochondrial filter (single-cell data):** the pipeline sets no mito cut-off, which is fine for nuclei, where mito reads are close to zero after ambient correction. Single-cell output is not QC-complete until a mito filter has been applied in the analysis.

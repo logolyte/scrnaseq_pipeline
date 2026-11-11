@@ -38,7 +38,7 @@ Warnings (written to stderr and, as short codes, to the 'warnings' column):
 Used by make_scdownstream_samplesheet.py. To check one sample by hand (needs
 numpy and h5py, e.g. in the scrnaseq environment):
 
-    python cellbender_priors.py <sample>_raw_matrix.h5ad <sample>_filtered_matrix.h5ad <sample>
+    python scripts/cellbender_priors.py <sample>_raw_matrix.h5ad <sample>_filtered_matrix.h5ad <sample>
 """
 
 import sys

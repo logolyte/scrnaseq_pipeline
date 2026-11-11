@@ -10,7 +10,7 @@
 
 Can be submitted directly with sbatch:
 
-    sbatch --chdir=. cellassign.py
+    sbatch --chdir=. scripts/cellassign.py
 
 Defaults come from pipeline.conf ($PIPELINE_CONF if set, else ./pipeline.conf)
 and downstream_processing_pipeline/nf-params.json:
@@ -61,8 +61,8 @@ import shutil
 import sys
 
 # sbatch runs a copy of this script from Slurm's spool directory, so look for
-# pipeline_common.py next to the original and in the project root (cwd)
-sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]
+# pipeline_common.py next to the original and in scripts/ of the project root (cwd)
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.getcwd(), "scripts")]
 from pipeline_common import DEFAULT_CONF, find_finalized_h5ad, read_conf  # noqa: E402
 
 # sbatch jobs inherit OMP_THREAD_LIMIT=1 on some clusters, which keeps PyTorch
