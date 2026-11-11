@@ -267,7 +267,11 @@ def add_velocyto(adata, velocyto_dir):
         positions.append(cell_positions)
     order = np.argsort(np.concatenate(positions))  # back to the cell order of adata
     for name, matrices in parts.items():
-        adata.layers[name] = scipy.sparse.vstack(matrices, format="csr")[order].astype(np.float32)
+        layer = scipy.sparse.vstack(matrices, format="csr")[order].astype(np.float32)
+        # STARsolo writes spliced, unspliced and ambiguous with a shared sparsity pattern, and decontX
+        # sets some counts to zero, so more than half of the stored entries can be explicit zeros
+        layer.eliminate_zeros()
+        adata.layers[name] = layer
     adata.obs["velocity_contamination"] = contamination
     adata.uns["velocyto_decontx"] = info
     print(f"velocyto layers: {velocyto_dir}, median velocity_contamination "
