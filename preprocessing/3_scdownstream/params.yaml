@@ -1,0 +1,12 @@
+# nf-core/scdownstream params of every run; run_pipeline.py adds input, outdir and species
+ambient_correction: decontx
+use_ambient_corrected_counts: true
+integration_methods: pca
+normalization_method: log1p
+neighbors_n_pcs: 30
+skip_liana: true
+de_methods: ""
+cell_cycle_scoring: false
+doublet_removal: true
+empty_droplet_removal: cellbender
+save_intermediates: true

@@ -1,7 +1,7 @@
 Bootstrap: docker
 From: community.wave.seqera.io/library/bioconductor-anndatar_bioconductor-celda_bioconductor-rhdf5_bioconductor-singlecellexperiment:195bce13eb18b882
 
-# decontX for scripts/velocity_decontx.py (ambient correction of the velocyto
+# decontX for preprocessing/4_velocity_decontx/ (ambient correction of the velocyto
 # layers). The base is the image of nf-core/scdownstream's CELDA_DECONTX module
 # at the pinned commit (Seqera Containers tag, content-addressed), so the
 # velocyto layers are corrected with the same R and celda as the main counts.

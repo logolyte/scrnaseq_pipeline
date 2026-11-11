@@ -1,0 +1,42 @@
+# Settings of every preprocessing run.
+# curate_samples.py copies config.yaml into the output folder of each run.
+
+# scdownstream --species, e.g. mouse or human; must match the reference
+species: mouse
+reference:
+  fasta: TODO        # the FASTA the STAR index was built from
+  gtf: TODO          # the GTF the STAR index was built from
+  star_index: TODO
+
+slurm_account: TODO
+cache_dir: TODO      # e.g. /scratch/$USER/cache: Nextflow home, singularity cache and the images setup.sh builds
+
+# samplesheet columns copied to obs of the final h5ad; a column the samplesheet lacks is skipped
+metadata_columns: [sample_title, sample_genotype, sample_sex]
+
+# curate_samples.py asks sc or sn and the run uses that set.
+# qc: scdownstream's cell filters; values not given here are the lenient defaults of prepare_scdownstream.py.
+# *_nmads: outliers by that many median absolute deviations per sample, 0 = off
+modes:
+  sc:
+    star_feature: TODO
+    qc:
+      min_genes: TODO
+      min_counts_cell: TODO
+      max_mito_percentage: TODO
+      min_ribo_percentage: TODO
+      log1p_total_counts_nmads: TODO
+      log1p_n_genes_by_counts_nmads: TODO
+      pct_counts_in_top_20_genes_nmads: TODO
+      pct_counts_mt_nmads: TODO
+  sn:
+    star_feature: GeneFull_Ex50pAS
+    qc:
+      min_genes: 200
+      min_counts_cell: 200
+
+# marker gene YAML for CellAssign, relative to preprocessing/; empty to skip cell types
+marker_genes: 4_cellassign/marker_gene_sets/mouse_glomerulus.yaml
+
+# true: a second scrnaseq run makes spliced/unspliced counts, corrected with decontX and added to the final h5ad
+run_velocyto: false

@@ -1,0 +1,17 @@
+# Settings of organize_fetchngs.py.
+
+# Used in fastq_info.py
+email:  # sent to NCBI with each request; if empty: NCBI prints a warning
+
+# Used in fastq_info.py
+skip_reads: 1000000    # reads from the first tiles often have many N and low quality, so they misrepresent the file
+sample_reads: 100000   # each FASTQ is measured on sample_reads reads after the first skip_reads
+
+# Used in fastq_info.py
+# library ID in the original file names (regular expression with one group), e.g. LIB339336;
+# runs without it are not grouped into libraries
+library_pattern: '(LIB\d+)'
+
+# Used in fastq_info.py
+processes:  # FASTQs read at the same time; if empty: all cores but one
+
