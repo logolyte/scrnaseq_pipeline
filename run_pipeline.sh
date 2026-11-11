@@ -10,13 +10,19 @@ export PIPELINE_CONF
 set -a; source "$PIPELINE_CONF"; set +a
 mkdir -p slurm_logs
 
-# Check before submitting anything (relative paths are relative to this repo)
+# Check before submitting anything (MARKER_GENES is relative to this repo,
+# SAMPLESHEET to the directory of pipeline.conf)
+SAMPLESHEET_PATH="$(cd "$(dirname "$PIPELINE_CONF")" && realpath -m "${SAMPLESHEET:-}")"
+if [[ -z "${SAMPLESHEET:-}" || ! -f "$SAMPLESHEET_PATH" ]]; then
+    echo "SAMPLESHEET ${SAMPLESHEET:-(not set)} not found (looked for $SAMPLESHEET_PATH)" >&2
+    exit 1
+fi
 if [[ -n "${MARKER_GENES:-}" && ! -f "$MARKER_GENES" ]]; then
     echo "MARKER_GENES file $MARKER_GENES not found" >&2
     exit 1
 fi
 
-# The samplesheet and cellassign jobs run Python directly and need the scrnaseq
+# The samplesheet, cellassign and finalize jobs run Python directly and need the scrnaseq
 # packages; sbatch passes this shell's environment on to them
 set +u  # conda's activation scripts use unset variables
 eval "$(conda shell.bash hook)"
@@ -45,11 +51,17 @@ DOWN_JOB=$(submit scdownstream downstream_processing_pipeline \
            --dependency=afterok:"$SHEET_JOB" --kill-on-invalid-dep=yes)
 echo "scdownstream: $DOWN_JOB"
 
+FINAL_DEPENDENCY=$DOWN_JOB
 if [[ -n "${MARKER_GENES:-}" ]]; then
     CELLASSIGN_JOB=$(submit cellassign . cellassign.py \
                      --dependency=afterok:"$DOWN_JOB" --kill-on-invalid-dep=yes)
     echo "cellassign:   $CELLASSIGN_JOB"
+    FINAL_DEPENDENCY=$CELLASSIGN_JOB
 fi
+
+FINAL_JOB=$(submit finalize . finalize_adata.py \
+            --dependency=afterok:"$FINAL_DEPENDENCY" --kill-on-invalid-dep=yes)
+echo "finalize:     $FINAL_JOB"
 
 if [[ "${RUN_VELOCYTO:-false}" == true ]]; then
     VELO_JOB=$(submit velocyto velocyto_pipeline velocyto_pipeline/velocyto_nfcore.sh)

@@ -18,6 +18,9 @@ set -a; source "${PIPELINE_CONF:?submit via run_job.sh or set PIPELINE_CONF}"; s
 export NXF_OPTS='-Xms1g -Xmx4g'
 mkdir -p "$NXF_SINGULARITY_CACHEDIR" "$APPTAINER_CACHEDIR" "$NXF_HOME"
 
+# SAMPLESHEET in pipeline.conf is relative to the directory of that file
+INPUT="$(cd "$(dirname "$PIPELINE_CONF")" && realpath "$SAMPLESHEET")"
+
 # execute the pipeline
 nextflow run nf-core/scrnaseq \
     -r 4.2.0 \
@@ -25,6 +28,7 @@ nextflow run nf-core/scrnaseq \
     -c slurm.config \
     -work-dir "$WORK_DIR/velocyto" \
     -params-file nf-params.json \
+    --input "$INPUT" \
     --outdir "$VELOCYTO_OUTDIR" \
     --protocol "$PROTOCOL" \
     --fasta "$FASTA_PATH" \

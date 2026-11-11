@@ -1,5 +1,4 @@
 {
-    "input": "samplesheet.csv",
     "aligner": "star",
     "star_feature": "GeneFull_Ex50pAS",
     "skip_cellbender": true

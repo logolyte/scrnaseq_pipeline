@@ -41,13 +41,12 @@ Steps:
      missing from the marker file are forced into the closest listed type;
      check the probabilities.
 
-Outputs in --outdir:
+Outputs in --outdir (finalize_adata.py adds the cell types to the final h5ad):
   cell_types.tsv          per cell: sample, cell_type, probability (the highest)
                           and one probability column per cell type
   cell_type_counts.tsv    cells per sample and cell type
-  <input>_cellassign.h5ad the input with obs['cell_type'],
-                          obs['cell_type_probability'],
-                          obsm['cellassign_probabilities'] and uns['cellassign']
+  run_info.json           the settings of the run and the cell types in marker
+                          file order; becomes uns['cellassign']
   restarts.tsv            NLL of each fit and how often it agrees with the best;
                           low agreement means the fit is unstable
   training_history.png    ELBO per epoch of the best fit; it should level off
@@ -56,12 +55,15 @@ Outputs in --outdir:
 """
 
 import argparse
-import glob
 import json
 import os
 import shutil
-import subprocess
 import sys
+
+# sbatch runs a copy of this script from Slurm's spool directory, so look for
+# pipeline_common.py next to the original and in the project root (cwd)
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]
+from pipeline_common import DEFAULT_CONF, find_finalized_h5ad, read_conf  # noqa: E402
 
 # sbatch jobs inherit OMP_THREAD_LIMIT=1 on some clusters, which keeps PyTorch
 # on one core; set it to the job's CPUs before torch is imported
@@ -83,25 +85,12 @@ from matplotlib import pyplot  # noqa: E402
 import scvi  # noqa: E402
 from scvi.external import CellAssign  # noqa: E402
 
-DEFAULT_CONF = os.environ.get("PIPELINE_CONF", "pipeline.conf")
 DEFAULT_PARAMS = "downstream_processing_pipeline/nf-params.json"
 UNASSIGNED = "Unassigned"
 # Fixed, not --seed: fits with different seeds (also in separate jobs) then see
 # the same counts, so their NLLs can be compared
 ROUNDING_SEED = 0
 AGREEMENT = 0.95  # fits with at least this share of cells typed as in the best fit count as the same optimum
-
-
-def read_conf(conf_path, names):
-    """Variables from pipeline.conf, sourced by bash so ${PROJECT_ROOT} expands."""
-    if not os.path.exists(conf_path):
-        sys.exit(f"{conf_path} not found; give --pipeline-conf or the paths directly")
-    script = 'source "$1" && shift && for name; do printf "%s\\0" "${!name-}"; done'
-    result = subprocess.run(["bash", "-c", script, "_", conf_path, *names],
-                            capture_output=True, text=True)
-    if result.returncode != 0:
-        sys.exit(f"could not read {conf_path}: {result.stderr.strip()}")
-    return dict(zip(names, result.stdout.split("\0")))
 
 
 def default_layer(params_path):
@@ -112,16 +101,6 @@ def default_layer(params_path):
     if params.get("use_ambient_corrected_counts") and method not in ("", "none"):
         return f"ambient_corrected_{method}"
     return "raw_counts"
-
-
-def find_input(downstream_outdir):
-    """The finalized h5ad of the scdownstream run."""
-    pattern = os.path.join(downstream_outdir, "09_finalized", "*.h5ad")
-    candidates = [p for p in sorted(glob.glob(pattern)) if not p.endswith("_cellxgene.h5ad")]
-    if len(candidates) != 1:
-        found = ", ".join(candidates) or "none"
-        sys.exit(f"expected one h5ad matching {pattern} (found: {found}); give --input")
-    return candidates[0]
 
 
 def read_markers(path):
@@ -264,9 +243,9 @@ def main(argv=None):
     parser.add_argument("--min-probability", type=float, default=0.0,
                         help="label cells below this highest probability 'Unassigned' "
                              "(default: 0, every cell gets a type)")
-    parser.add_argument("--n-restarts", type=int, default=3,
+    parser.add_argument("--n-restarts", type=int, default=5,
                         help="fits from different random starts; the lowest NLL is kept "
-                             "(default: 3)")
+                             "(default: 5)")
     parser.add_argument("--seed", type=int, default=0, help="seed of the first fit; "
                         "fit i uses seed + i (default: 0)")
     args = parser.parse_args(argv)
@@ -275,7 +254,7 @@ def main(argv=None):
         conf = read_conf(args.pipeline_conf, ["MARKER_GENES", "DOWNSTREAM_OUTDIR",
                                               "CELLASSIGN_OUTDIR"])
         args.markers = args.markers or conf["MARKER_GENES"]
-        args.input = args.input or find_input(conf["DOWNSTREAM_OUTDIR"])
+        args.input = args.input or find_finalized_h5ad(conf["DOWNSTREAM_OUTDIR"])
         args.outdir = args.outdir or conf["CELLASSIGN_OUTDIR"]
     if not args.markers:
         sys.exit("no marker file: set MARKER_GENES in pipeline.conf or give --markers")
@@ -350,11 +329,10 @@ def main(argv=None):
     shutil.copyfile(args.markers, out("markers.yaml"))
     matrix.to_csv(out("marker_matrix.tsv"), sep="\t")
 
-    adata.obs["cell_type"] = cell_type
-    adata.obs["cell_type_probability"] = best.to_numpy()
-    adata.obsm["cellassign_probabilities"] = probabilities
-    adata.uns["cellassign"] = {
+    run_info = {
+        "input": os.path.abspath(args.input),
         "marker_file": os.path.abspath(args.markers),
+        "cell_types": list(matrix.columns),
         "markers": {t: [g for g in genes if g in matrix.index] for t, genes in markers.items()},
         "layer": args.layer,
         "min_probability": args.min_probability,
@@ -362,9 +340,8 @@ def main(argv=None):
         "n_restarts": args.n_restarts,
         "scvi_tools_version": scvi.__version__,
     }
-    stem = os.path.splitext(os.path.basename(args.input))[0]
-    h5ad_path = out(f"{stem}_cellassign.h5ad")
-    adata.write_h5ad(h5ad_path, compression="gzip")
+    with open(out("run_info.json"), "w") as handle:
+        json.dump(run_info, handle, indent=2)
     print(f"wrote {args.outdir}")
 
 

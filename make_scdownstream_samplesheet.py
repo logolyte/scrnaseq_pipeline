@@ -13,8 +13,9 @@ ordinary Python comments:
 
     sbatch --chdir=. --dependency=afterok:$STAR_JOB make_scdownstream_samplesheet.py
 
-Without --starsolo-outdir, STARSOLO_OUTDIR is taken from pipeline.conf
-($PIPELINE_CONF if set, else ./pipeline.conf).
+Without --starsolo-outdir and --samplesheet, STARSOLO_OUTDIR and SAMPLESHEET
+are taken from pipeline.conf ($PIPELINE_CONF if set, else ./pipeline.conf);
+a relative SAMPLESHEET is relative to the directory of pipeline.conf.
 
 Only the raw matrices are listed. scdownstream branches on whether 'filtered'
 is set: when it is, the sample is treated as already filtered and CellBender
@@ -32,8 +33,9 @@ Run from the project root (run_pipeline.sh guarantees that with sbatch --chdir),
 in the scrnaseq conda environment (needs numpy and h5py; run_pipeline.sh
 activates it before submitting).
 
-    pipeline.conf                                           <- read (STARSOLO_OUTDIR)
-    starsolo_pipeline/nf-params.json                        <- read (aligner, input)
+    pipeline.conf                                           <- read (STARSOLO_OUTDIR, SAMPLESHEET)
+    starsolo_pipeline/nf-params.json                        <- read (aligner)
+    --samplesheet                                           <- read (sample names)
     --starsolo-outdir                                       <- read (STARsolo output)
     downstream_processing_pipeline/samplesheet.csv          <- written
     downstream_processing_pipeline/cellbender_priors.tsv    <- written
@@ -43,15 +45,15 @@ import argparse
 import csv
 import json
 import os
-import subprocess
 import sys
 
 # sbatch runs a copy of this script from Slurm's spool directory, so look for
-# cellbender_priors.py next to the original and in the project root (cwd)
+# cellbender_priors.py and pipeline_common.py next to the original and in the
+# project root (cwd)
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]
 import cellbender_priors  # noqa: E402
+from pipeline_common import DEFAULT_CONF, conf_relative, read_conf  # noqa: E402
 
-DEFAULT_CONF = os.environ.get("PIPELINE_CONF", "pipeline.conf")
 DEFAULT_PARAMS = "starsolo_pipeline/nf-params.json"
 DEFAULT_OUTPUT = "downstream_processing_pipeline/samplesheet.csv"
 DEFAULT_PRIORS_OUTPUT = "downstream_processing_pipeline/cellbender_priors.tsv"
@@ -89,30 +91,10 @@ COLUMNS = ["sample", "unfiltered", "symbol_col", "batch_col", "donor_col",
            "expected_cells", "use_ambient_corrected_counts"] + list(QC)
 
 
-def read_starsolo_outdir(conf_path):
-    """STARSOLO_OUTDIR from pipeline.conf, sourced by bash so ${PROJECT_ROOT} expands."""
-    if not os.path.exists(conf_path):
-        sys.exit(f"no --starsolo-outdir given and {conf_path} not found")
-    result = subprocess.run(
-        ["bash", "-c", 'source "$1" && printf %s "$STARSOLO_OUTDIR"', "_", conf_path],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0 or not result.stdout:
-        sys.exit(f"could not read STARSOLO_OUTDIR from {conf_path}: {result.stderr.strip()}")
-    return result.stdout
-
-
-def read_config(params_path):
-    """Read aligner and samplesheet from the scrnaseq params; paths are relative to that file."""
+def read_aligner(params_path):
+    """The aligner from the scrnaseq params."""
     with open(params_path) as handle:
-        config = json.load(handle)
-
-    samplesheet = config.get("input", "samplesheet.csv")
-    if not os.path.isabs(samplesheet):
-        samplesheet = os.path.join(os.path.dirname(os.path.abspath(params_path)),
-                                   samplesheet)
-
-    return config.get("aligner", "star"), samplesheet
+        return json.load(handle).get("aligner", "star")
 
 
 def read_samples(path):
@@ -163,6 +145,8 @@ def main(argv=None):
     )
     parser.add_argument("--starsolo-outdir",
                         help="outdir of the nf-core/scrnaseq run (default: STARSOLO_OUTDIR in --pipeline-conf)")
+    parser.add_argument("--samplesheet",
+                        help="nf-core/scrnaseq samplesheet (default: SAMPLESHEET in --pipeline-conf)")
     parser.add_argument("--pipeline-conf", default=DEFAULT_CONF)
     parser.add_argument("--params", default=DEFAULT_PARAMS)
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
@@ -170,11 +154,18 @@ def main(argv=None):
                         help="CellBender settings per sample, read by slurm.config")
     args = parser.parse_args(argv)
 
-    outdir = args.starsolo_outdir or read_starsolo_outdir(args.pipeline_conf)
+    outdir, samplesheet = args.starsolo_outdir, args.samplesheet
+    if not outdir or not samplesheet:
+        conf = read_conf(args.pipeline_conf, ["STARSOLO_OUTDIR", "SAMPLESHEET"])
+        outdir = outdir or conf["STARSOLO_OUTDIR"]
+        samplesheet = samplesheet or conf_relative(conf["SAMPLESHEET"], args.pipeline_conf)
+    if not outdir or not samplesheet:
+        sys.exit("set STARSOLO_OUTDIR and SAMPLESHEET in pipeline.conf, or give "
+                 "--starsolo-outdir and --samplesheet")
     outdir = outdir.rstrip("/")
     print(f"starsolo outdir: {outdir}", file=sys.stderr)
-    aligner, samplesheet = read_config(args.params)
-    rows, priors = build_rows(outdir, aligner, read_samples(samplesheet))
+    print(f"samplesheet:     {samplesheet}", file=sys.stderr)
+    rows, priors = build_rows(outdir, read_aligner(args.params), read_samples(samplesheet))
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w", newline="") as handle:
