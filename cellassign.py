@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64gb
+#SBATCH --mem=16gb
 #SBATCH --time=24:00:00
 """Assign cell types to the scdownstream output with CellAssign (scvi-tools).
 
