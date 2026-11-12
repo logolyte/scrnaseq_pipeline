@@ -1,4 +1,4 @@
-"""Describes the FASTQs of one GSE: metrics, library IDs from SRA, groups of files with the same reads."""
+"""Describes the FASTQs of one GSE: metrics, original file names from SRA, groups of files with the same reads."""
 
 import gzip
 import os
@@ -17,7 +17,6 @@ from Bio import Entrez
 CONFIG = yaml.safe_load((Path(__file__).resolve().parent / "config.yaml").read_text())
 # sent to NCBI with each request; without it NCBI prints a warning
 Entrez.email = CONFIG["email"]
-LIBRARY_PATTERN = CONFIG["library_pattern"]
 SKIP_READS = CONFIG["skip_reads"]
 SAMPLE_READS = CONFIG["sample_reads"]
 # files read at the same time; by default one core stays free for the rest of the machine
@@ -105,9 +104,6 @@ def list_files(fastq_dir, gse_runs, original_names, chemistries):
 
     # raises KeyError if NCBI returned no names for a run
     files["original_names"] = [original_names[run] for run in files["run_accession"]]
-    # library ID like LIB339336 from the original names; the run accession if there is none
-    library_ids = files["original_names"].str.extract(LIBRARY_PATTERN, expand=False)
-    files["library"] = library_ids.fillna(files["run_accession"])
 
     # Some authors uploaded R1 and R2 as separate runs of one file each; such files are matched by equal read count.
     # Otherwise, R1, R2 or index reads share the same run name

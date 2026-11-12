@@ -5,6 +5,7 @@ are in a 10x whitelist; the whitelist with most matches gives the scrnaseq --pro
 """
 
 import gzip
+from collections import Counter
 from functools import cache
 from pathlib import Path
 
@@ -14,6 +15,7 @@ LAYOUT = {"fastq_1": "R1", "fastq_2": "R2"}
 SAMPLESHEET_COLUMNS = ["protocol"]
 FASTQ_NAME = "{source}"
 ASK_SAMPLE = False
+CELL_BARCODE_READ = "R1"
 
 WHITELIST_DIR = Path(__file__).resolve().parents[1] / "whitelists"
 # keys are scrnaseq --protocol values
@@ -33,6 +35,8 @@ MIN_WL = 0.75
 # A 26-28 bp R1 ends right after the UMI, so its TSO share is 0 and 5' data with such R1 cannot be recognized
 TSO = "TTTCTTATATGGG"
 MIN_TSO = 0.1
+# the most frequent barcodes of the read sample; they belong to cells, not to empty droplets
+TOP_BARCODES = 1000
 
 
 @cache
@@ -47,7 +51,7 @@ def whitelists():
 
 def profile(sequences):
     """Finds the 10x version whose whitelist has most read starts and returns it
-    with the share of such reads and the share of reads with TSO after the UMI."""
+    with the share of such reads, the share of reads with TSO after the UMI and the most frequent barcodes."""
     read_barcodes = [sequence[:CB_LENGTH] for sequence in sequences]
     whitelist_shares = {}
     for protocol, whitelist in whitelists().items():
@@ -59,10 +63,12 @@ def profile(sequences):
     barcode_length = CB_LENGTH + PROTOCOLS[protocol]["umi_length"]
     after_umi = [sequence[barcode_length : barcode_length + len(TSO)] for sequence in sequences]
     has_tso = [bases == TSO for bases in after_umi]
+    top_barcodes = {barcode for barcode, _ in Counter(read_barcodes).most_common(TOP_BARCODES)}
     return {
         "protocol": protocol,
         "wl": round(whitelist_shares[protocol], 3),
         "tso": round(sum(has_tso) / len(sequences), 3),
+        "cell_barcodes": top_barcodes,
     }
 
 

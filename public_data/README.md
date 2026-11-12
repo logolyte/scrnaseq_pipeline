@@ -46,8 +46,7 @@ To add studies, append GSEs to the bottom of `ids.csv` and rerun the same comman
 
 ## 3. Sort the FASTQs by GSE
 
-`config.yaml` sets how many reads of each FASTQ are measured, the library ID pattern of the original file names
-and the number of FASTQs read at the same time. Your email there is optional: it is sent to NCBI with each request, without it NCBI prints a warning.
+`config.yaml` sets how many reads of each FASTQ are measured and the number of FASTQs read at the same time. Your email there is optional: it is sent to NCBI with each request, without it NCBI prints a warning.
 
 In the `scrnaseq` environment (it needs biopython):
 
@@ -69,19 +68,20 @@ Files table:
 - `length`: median read length;
 - `phred30_head` / `phred30_tail`: share of bases with Phred ≥ 30 in the first / last quarter of the read;
 - `phred30_bp`: number of read positions where ≥ 70% of bases have Phred ≥ 30;
-- `library`: `LIB\d+` from the original file names, else the run accession;
 - `original_names`: file names as the authors uploaded them to SRA.
 
 tenx table:
 - `role`: R1, R2 or I (index, ≤ 10 bp);
 - `protocol`: the 10x version whose whitelist matches best;
 - `wl`: share of reads whose first 16 nt are in that whitelist; R1 is the read with the highest `wl`;
-- `tso`: share of reads with the TSO right after the UMI, a sign of 10x 5'.
+- `tso`: share of reads with the TSO right after the UMI, a sign of 10x 5';
+- `library`: runs with the same cells, i.e. sharing at least half of their 1000 most frequent cell barcodes,
+  are one library.
 
 No proposal if `wl` < 0.75, if R1 is shorter than cell barcode + UMI, or if `tso` ≥ 0.1.
 
 When a GSE is done, its R1/R2 move to `DATASET/<GSE>/` with `samplesheet.csv`: one row per run, `sample` = GSM
-(GSM_library if a GSM has several libraries), `protocol`, the fetchngs columns and the BioSample attributes from SRA as `sample_*` columns
+(GSM_LIB_1, GSM_LIB_2, … if a GSM has several libraries), `protocol`, the fetchngs columns and the BioSample attributes from SRA as `sample_*` columns
 (e.g. `sample_genotype`). A GSE that already has a samplesheet is skipped.
 
 Then run `preprocessing/run_pipeline.py DATASET/<GSE>/samplesheet.csv <outdir>`; choose the `sample_*` columns for the final h5ad in `metadata_columns` of `preprocessing/config.yaml`.

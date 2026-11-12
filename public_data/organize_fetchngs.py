@@ -9,7 +9,9 @@ A chemistry module in chemistries/ tells this script:
 - SAMPLESHEET_COLUMNS: which of its profile values go to the samplesheet, e.g. ["protocol"]
 - FASTQ_NAME: how to name moved files; "{source}" keeps the fetchngs name
 - ASK_SAMPLE: True if libraries from different GSMs can be one sample (Multiome GEX and ATAC)
-- profile(sequences): its values for one FASTQ, e.g. the share of barcodes in a whitelist
+- CELL_BARCODE_READ: the read that starts with the cell barcode, e.g. "R1"
+- profile(sequences): its values for one FASTQ, e.g. the share of barcodes in a whitelist,
+  and "cell_barcodes": the most frequent cell barcodes, which tell runs of one library from different libraries
 - roles(spot_files): which file is R1, R2, ... among files with the same reads, or why none fits
 """
 
@@ -37,23 +39,61 @@ TABLE_COLUMNS = [
     "phred30_tail",
     "phred30_bp",
     "read_count",
-    "library",
     "original_names",
 ]
 DROPPED_COLUMNS = ["base_count", "fastq_md5", "fastq_bytes", "fastq_ftp", "fastq_galaxy", "fastq_aspera"]
+# runs sharing at least this share of their most frequent cell barcodes have the same cells.
+# Runs of one library share about 80%, different libraries below 1%
+SAME_CELLS = 0.5
+
+
+def shared_barcodes(files, barcode_role):
+    """Returns the share of cell barcodes of each run (row) found in each other run (column),
+    with the file numbers of the runs' barcode reads as row and column names."""
+    barcodes_of_file = files.loc[files["role"] == barcode_role, "cell_barcodes"]
+    shares = pd.DataFrame(index=barcodes_of_file.index, columns=barcodes_of_file.index, dtype=float)
+    for row_file, row_barcodes in barcodes_of_file.items():
+        for column_file, column_barcodes in barcodes_of_file.items():
+            shares.loc[row_file, column_file] = len(row_barcodes & column_barcodes) / len(row_barcodes)
+    return shares.round(3)
+
+
+def number_libraries(files, shares):
+    """Numbers the libraries of one GSM: a run that shares most of its cell barcodes with an earlier run
+    has the same cells, so it is another run of that library. Returns the library number of each file."""
+    # e.g. {1: 1, 3: 1, 5: 2} for the barcode reads of two runs of library 1 and one run of library 2
+    library_of_run = {}
+    library_of_spots = {}
+    for run_file in shares.index:
+        library = 0
+        for earlier_file, earlier_library in library_of_run.items():
+            if shares.loc[run_file, earlier_file] >= SAME_CELLS:
+                library = earlier_library
+                break
+        if library == 0:
+            library = len(set(library_of_run.values())) + 1
+        library_of_run[run_file] = library
+        library_of_spots[files.loc[run_file, "spots"]] = library
+    return files["spots"].map(library_of_spots)
 
 
 def chemistry_table(files, chemistry_name, chemistry):
-    """Assigns the chemistry's read roles to each group of files with the same spots, or records why they do not fit."""
+    """Assigns the chemistry's read roles to each group of files with the same spots, or records why they do not fit,
+    and numbers the libraries by their cells."""
     profiles = pd.DataFrame(files[chemistry_name].tolist(), index=files.index)
     files = files.join(profiles)
     # create the columns before .loc: .loc would create them with NaN instead of None
     files["role"] = None
     files["reason"] = None
+    files["library"] = None
     for _, spot_files in files.groupby("spots"):
         roles, reason = chemistry.roles(spot_files)
         files.loc[spot_files.index, "role"] = roles
         files.loc[spot_files.index, "reason"] = reason
+    # libraries can be numbered only when every run has a cell barcode read
+    if files["reason"].isna().all():
+        shares = shared_barcodes(files, chemistry.CELL_BARCODE_READ)
+        files["library"] = number_libraries(files, shares)
     return files
 
 
@@ -62,12 +102,8 @@ def propose(files, layout):
     reasons = list(files["reason"].dropna().unique())
     if reasons:
         return None, reasons
-    # runs without a library ID cannot be grouped: top-up runs of one library would become separate samples
-    without_library_id = files["library"] == files["run_accession"]
-    if files["spots"].nunique() > 1 and without_library_id.any():
-        return None, ["several runs without a library ID in original names"]
 
-    # file numbers of each library in LAYOUT order, e.g. {"LIB1": [1, 2, 3, 4]} for R1 R2 of two runs
+    # file numbers of each library in LAYOUT order, e.g. {1: [1, 2, 3, 4]} for R1 R2 of two runs
     file_numbers_by_library = defaultdict(list)
     for _, spot_files in files.groupby("spots", sort=False):
         library = spot_files["library"].iloc[0]
@@ -88,15 +124,21 @@ def ask(files, files_by_chemistry):
     proposals = []
     for chemistry_name, chemistry in CHEMISTRIES.items():
         chemistry_files = files_by_chemistry[chemistry_name]
-        # the names of the chemistry's profile values, e.g. ["protocol", "wl", "tso"]
+        # the names of the chemistry's profile values to show, e.g. ["protocol", "wl", "tso"]
         profile_names = list(files[chemistry_name].iloc[0].keys())
+        profile_names.remove("cell_barcodes")
         roles = " ".join(chemistry.LAYOUT.values())
         print(f"\n{chemistry_name} ({roles}):")
-        print(chemistry_files[["role"] + profile_names].to_string())
+        print(chemistry_files[["role"] + profile_names + ["library"]].to_string())
         file_numbers, reasons = propose(chemistry_files, chemistry.LAYOUT)
         if file_numbers is None:
             print("  not proposed: " + "; ".join(reasons))
         else:
+            shares = shared_barcodes(chemistry_files, chemistry.CELL_BARCODE_READ)
+            if len(shares) > 1:
+                barcode_role = chemistry.CELL_BARCODE_READ
+                print(f"\nShared cell barcodes of {barcode_role} files (>= {SAME_CELLS}: same library):")
+                print(shares.to_string())
             proposals.append(f"{chemistry_name} {file_numbers}")
 
     # Enter takes a proposal only if one chemistry fits; with several the user types one of them
@@ -123,23 +165,16 @@ def parse_answer(answer):
     return chemistry_name, libraries
 
 
-def library_names(gsm, libraries, files):
-    """Names each library GSM, or GSM_<library> if there are several."""
+def library_names(gsm, libraries):
+    """Names each library GSM, or GSM_LIB_1, GSM_LIB_2, ... in answer order if there are several."""
     if len(libraries) == 1:
         return [gsm]
-    names = []
-    for units in libraries:
-        first_file_number = units[0][0]
-        names.append(f"{gsm}_{files.loc[first_file_number, 'library']}")
-    # scrnaseq merges rows with the same sample into one run, so two libraries need different names
-    if len(set(names)) != len(names):
-        raise ValueError(f"{gsm}: libraries share a name {names}; group their units together")
-    return names
+    return [f"{gsm}_LIB_{number}" for number in range(1, len(libraries) + 1)]
 
 
 def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder):
     """Builds a samplesheet row for each unit and lists where its files move."""
-    names = library_names(gsm, libraries, files)
+    names = library_names(gsm, libraries)
     samplesheet_rows = []
     file_moves = []
     for library_name, units in zip(names, libraries, strict=True):
@@ -147,12 +182,15 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
         if chemistry.ASK_SAMPLE:
             prompt = f"Sample for {library_name}; type the same for libraries of one sample. Enter = {library_name}\n> "
             sample = input(prompt).strip() or library_name
+        # library numbers of the typed runs in the chemistry table
+        cell_libraries = set()
         for lane, unit in enumerate(units, start=1):
             # a list, because .loc reads a tuple as (row, column)
             unit_files = files.loc[list(unit)]
             # the files the user typed for one row must come from the same reads
             if unit_files["read_count"].nunique() > 1:
                 raise ValueError(f"{list(unit_files['file'])} have different read counts")
+            cell_libraries.update(unit_files["library"])
             first_file = unit_files.iloc[0]
             row = first_file[samplesheet_columns + chemistry.SAMPLESHEET_COLUMNS].to_dict()
             # SRA marks R1 and R2 uploaded as separate runs as SINGLE
@@ -167,6 +205,9 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
                 row[column] = str(destination)
                 file_moves.append((source, destination))
             samplesheet_rows.append(row)
+        # runs of different cells in one sample would merge two channels whose cell barcodes collide
+        if len(cell_libraries) > 1:
+            raise ValueError(f"{library_name}: the typed runs have different cells (libraries {sorted(cell_libraries)})")
     return samplesheet_rows, file_moves
 
 
