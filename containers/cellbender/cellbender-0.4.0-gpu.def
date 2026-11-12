@@ -1,13 +1,8 @@
 Bootstrap: docker
 From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 
-# CellBender for the CELLBENDER_REMOVEBACKGROUND process of nf-core/scdownstream.
-# Replaces the module's GPU container (CellBender 0.3.2 on an older PyTorch/CUDA),
-# which does not run on H100 GPUs. CellBender 0.4.0 only adds support for newer
-# Python versions; its results match 0.3.2.
-#
-# Built by setup.sh, which copies lock.txt (empty if there is no lock yet) to
-# /opt/recipe. The lock pins every Python package, as a pip constraints file.
+# CellBender for CELLBENDER_REMOVEBACKGROUND of nf-core/scdownstream. The module's GPU
+# image (CellBender 0.3.2) does not run on H100 GPUs; 0.4.0 gives the same results.
 
 %files
     lock.txt /opt/recipe/lock.txt

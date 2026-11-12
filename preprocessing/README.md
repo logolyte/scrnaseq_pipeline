@@ -116,7 +116,7 @@ preprocessing/
 ├── config.yaml               reference, Slurm, sc/sn settings, metadata columns, markers
 ├── run_pipeline.py           starts one run
 ├── 1_curate/                 curate_samples.py
-├── 2_scrnaseq/               scrnaseq.config, params.yaml; velocyto.config for the velocyto run
+├── 2_scrnaseq/               scrnaseq.config, params.yaml
 ├── 3_scdownstream/           prepare_scdownstream.py, cellbender_priors.py, scdownstream.config, params.yaml
 ├── 4_cellassign/             cellassign.py, marker_gene_sets/
 ├── 4_velocity_decontx/       velocity_decontx.py, velocity_decontx.R

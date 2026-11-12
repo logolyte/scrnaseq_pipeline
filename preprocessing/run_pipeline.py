@@ -33,10 +33,9 @@ def write_params(launch_dir, step_params, run_params):
     (launch_dir / "params.yaml").write_text(yaml.safe_dump(params, sort_keys=False))
 
 
-def nextflow_command(pipeline, configs):
+def nextflow_command(pipeline, config):
     """Builds the command that runs a Nextflow pipeline from its launch folder."""
-    config_options = " ".join(f"-c {config}" for config in configs)
-    return f"nextflow run {pipeline} -profile singularity,gpu {config_options} -params-file params.yaml -resume"
+    return f"nextflow run {pipeline} -profile singularity,gpu -c {config} -params-file params.yaml -resume"
 
 
 def python_command(script, outdir):
@@ -102,7 +101,7 @@ def main():
     }
     scrnaseq_dir = PIPELINE_DIR / "2_scrnaseq"
     write_params(outdir / "scrnaseq", scrnaseq_dir / "params.yaml", scrnaseq_params)
-    command = nextflow_command(SCRNASEQ, [scrnaseq_dir / "scrnaseq.config"])
+    command = nextflow_command(SCRNASEQ, scrnaseq_dir / "scrnaseq.config")
     scrnaseq_job = submit("scrnaseq", command, outdir / "scrnaseq", [], outdir)
 
     command = python_command("3_scdownstream/prepare_scdownstream.py", outdir)
@@ -115,7 +114,7 @@ def main():
         "species": config["species"],
     }
     write_params(outdir / "scdownstream", scdownstream_dir / "params.yaml", scdownstream_params)
-    command = nextflow_command(SCDOWNSTREAM, [scdownstream_dir / "scdownstream.config"])
+    command = nextflow_command(SCDOWNSTREAM, scdownstream_dir / "scdownstream.config")
     scdownstream_job = submit("scdownstream", command, outdir / "scdownstream", [prepare_job], outdir)
 
     finalize_after = [scdownstream_job]
@@ -129,8 +128,7 @@ def main():
             "star_feature": "Gene Velocyto",
         }
         write_params(outdir / "velocyto", scrnaseq_dir / "params.yaml", velocyto_params)
-        configs = [scrnaseq_dir / "scrnaseq.config", scrnaseq_dir / "velocyto.config"]
-        command = nextflow_command(SCRNASEQ, configs)
+        command = nextflow_command(SCRNASEQ, scrnaseq_dir / "scrnaseq.config")
         velocyto_job = submit("velocyto", command, outdir / "velocyto", [], outdir)
         # decontX of the velocyto counts needs the cells CellBender called in scdownstream
         command = python_command("4_velocity_decontx/velocity_decontx.py", outdir)

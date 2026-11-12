@@ -1,8 +1,8 @@
 Bootstrap: docker
 From: mambaorg/micromamba:2.0.5
 
-# Built by setup.sh, which copies environment.yml and lock.txt (empty if there
-# is no lock yet) to /opt/recipe.
+# scDblFinder for SCDBLFINDER of nf-core/scdownstream: the module's 1.24.0 calls too
+# few doublets (nf-core/scdownstream#382).
 
 %files
     environment.yml /opt/recipe/environment.yml
