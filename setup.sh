@@ -1,6 +1,6 @@
 #!/bin/bash
 # One-time setup after cloning: bash setup.sh <cache_dir of preprocessing/config.yaml>
-# Creates the conda environment "scrnaseq" from envs/scrnaseq.lock.yml and builds every
+# Creates the conda environment "scrnaseq" from envs/scrnaseq.yml and builds every
 # containers/<name>/<image>.def into <cache_dir>/containers/<image>.sif.
 # Safe to rerun: it skips what already exists. To rebuild an image, delete its .sif first.
 set -euo pipefail
@@ -11,7 +11,7 @@ CONTAINER_DIR="$1/containers"
 if conda env list | awk '{print $1}' | grep -qx scrnaseq; then
     echo "conda environment scrnaseq exists; skipping"
 else
-    conda env create -n scrnaseq -f envs/scrnaseq.lock.yml
+    conda env create -n scrnaseq -f envs/scrnaseq.yml
 fi
 
 mkdir -p "$CONTAINER_DIR"
