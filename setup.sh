@@ -5,8 +5,9 @@
 # Safe to rerun: it skips what already exists. To rebuild an image, delete its .sif first.
 set -euo pipefail
 
+# absolute path, because the builds below run inside each recipe folder
+CONTAINER_DIR="$(realpath "$1")/containers"
 cd "$(dirname "$0")"
-CONTAINER_DIR="$1/containers"
 
 if conda env list | awk '{print $1}' | grep -qx scrnaseq; then
     echo "conda environment scrnaseq exists; skipping"
