@@ -16,7 +16,8 @@ FETCHNGS_OUT/
    ▼
 DATASET/<GSE>/                       one folder per GSE
 ├── *.fastq.gz                       R1 and R2 of the chosen GSMs (index reads stay in FETCHNGS_OUT)
-└── samplesheet.csv                  input of preprocessing/run_pipeline.py, with the sample metadata from GEO/SRA
+├── samplesheet.csv                  input of preprocessing/run_pipeline.py, with the sample metadata from GEO/SRA
+└── README.txt                       the study, who sorted the files and when, the skipped GSMs
 ```
 
 `organize_fetchngs.py` moves the files the preprocessing needs, with the sample metadata, into one folder per study,

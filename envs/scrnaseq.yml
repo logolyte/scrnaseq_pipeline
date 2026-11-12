@@ -8,6 +8,7 @@ dependencies:
   - nf-core=4.1.0=pyhdfd78af_0
   - nextflow=26.04.6=h2a3209d_1
   - numpy=2.5.2
+  - pandas
   - pip:
     # CPU-only PyTorch for CellAssign (cellassign.py); without this index pip
     # installs the CUDA build, which is several GB larger

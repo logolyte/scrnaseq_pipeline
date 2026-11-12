@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Moves fetchngs FASTQs into DATASET/<GSE>/ and writes a samplesheet for nf-core/scrnaseq
-with the BioSample attributes of each sample as sample_* columns.
+with the BioSample attributes of each sample as sample_* columns, and a README.txt on the source of the data.
 
 For each GSM, shows the files with read roles from each chemistry module and asks which files to take.
 
@@ -14,7 +14,10 @@ A chemistry module in chemistries/ tells this script:
 """
 
 import argparse
+import datetime
+import getpass
 import shutil
+import subprocess
 from collections import defaultdict
 from itertools import batched
 from pathlib import Path
@@ -210,6 +213,39 @@ def move_files(file_moves, samplesheet_rows, gse_folder):
     pd.DataFrame(samplesheet_rows).to_csv(gse_folder / "samplesheet.csv", index=False)
 
 
+def write_readme(gse, gse_runs, samplesheet_rows, gse_folder):
+    """Writes README.txt: the study, how its files were downloaded and sorted, by whom and when,
+    and which GSMs were skipped."""
+    taken_gsms = set()
+    for row in samplesheet_rows:
+        taken_gsms.add(row["sample_alias"])
+    skipped_gsms = sorted(set(gse_runs["sample_alias"]) - taken_gsms)
+    commit = subprocess.run(
+        ["git", "describe", "--always", "--dirty"],
+        cwd=Path(__file__).resolve().parent,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    lines = [
+        f"{gse}: {gse_runs['study_title'].iloc[0]}",
+        f"https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={gse}",
+        f"Organism: {', '.join(gse_runs['scientific_name'].unique())}",
+        "",
+        "Downloaded from SRA with nf-core/fetchngs (--download_method sratools)",
+        f"and sorted into this folder with organize_fetchngs.py (scrnaseq_pipeline, commit {commit.stdout.strip()})",
+        f"by {getpass.getuser()} on {datetime.date.today()}.",
+        "",
+        "samplesheet.csv   one row per sequencing run: sample (GSM), FASTQ paths, protocol,",
+        "                  SRA metadata and BioSample attributes (sample_* columns)",
+        "*.fastq.gz        the FASTQs chosen during sorting",
+        "",
+        "Index reads and skipped GSMs were left out.",
+        f"Skipped GSMs: {', '.join(skipped_gsms) or 'none'}",
+    ]
+    (gse_folder / "README.txt").write_text("\n".join(lines) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fetchngs", type=Path, required=True, help="fetchngs --outdir")
@@ -234,6 +270,7 @@ def main():
             print(f"{gse}: nothing to move")
             continue
         move_files(file_moves, samplesheet_rows, gse_folder)
+        write_readme(gse, gse_runs, samplesheet_rows, gse_folder)
 
 
 if __name__ == "__main__":
