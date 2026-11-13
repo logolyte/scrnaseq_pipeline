@@ -46,9 +46,11 @@ def main():
 
     config = yaml.safe_load(CONFIG.read_text())
     samplesheet = pd.read_csv(args.samplesheet, dtype=str, keep_default_na=False)
+    lowercase_names = {column.lower(): column for column in samplesheet.columns}
     metadata_columns = []
     for column in config["metadata_columns"]:
-        if column in samplesheet.columns:
+        if column.lower() in lowercase_names:
+            samplesheet = samplesheet.rename(columns={lowercase_names[column.lower()]: column})
             metadata_columns.append(column)
     # every sample gets one value per column: the runs of a sample must agree
     values_per_sample = samplesheet.groupby("sample")[["protocol"] + metadata_columns].nunique()

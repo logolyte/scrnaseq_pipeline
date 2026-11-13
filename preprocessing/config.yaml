@@ -12,7 +12,7 @@ slurm_account: TODO
 cache_dir: TODO      # e.g. /scratch/$USER/cache: Nextflow home, singularity cache and the images setup.sh builds
 
 # samplesheet columns copied to obs of the final h5ad; a column the samplesheet lacks is skipped
-metadata_columns: [sample_title, sample_genotype, sample_sex]
+metadata_columns: [sample_title, sample_genotype, sample_sex, sample_age]
 
 # curate_samples.py asks sc or sn and the run uses that set.
 # qc: scdownstream's cell filters; values not given here are the lenient defaults of prepare_scdownstream.py.
