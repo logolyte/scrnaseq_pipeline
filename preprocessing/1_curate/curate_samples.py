@@ -46,6 +46,8 @@ def main():
 
     config = yaml.safe_load(CONFIG.read_text())
     samplesheet = pd.read_csv(args.samplesheet, dtype=str, keep_default_na=False)
+    for column in ["fastq_1", "fastq_2"]:
+        samplesheet[column] = [str(args.samplesheet.parent.resolve() / path) for path in samplesheet[column]]
     lowercase_names = {column.lower(): column for column in samplesheet.columns}
     metadata_columns = []
     for column in config["metadata_columns"]:

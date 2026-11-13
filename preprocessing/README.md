@@ -49,7 +49,7 @@ Once, from the repository root:
 
 ## 2. Write the samplesheet
 
-One row per sequencing run; runs of one sample share `sample` and must have the same protocol and metadata. `protocol` is the scrnaseq `--protocol`, e.g. `10XV3`:
+One row per sequencing run; runs of one sample share `sample` and must have the same protocol and metadata. `protocol` is the scrnaseq `--protocol`, e.g. `10XV3`. FASTQ paths are absolute or relative to the samplesheet folder:
 
 ```
 sample,fastq_1,fastq_2,protocol,sample_genotype

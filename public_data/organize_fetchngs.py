@@ -201,9 +201,8 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
                 file_name = chemistry.FASTQ_NAME.format(
                     source=source.name, prefix=library_name, lane=lane, role=role
                 )
-                destination = gse_folder / file_name
-                row[column] = str(destination)
-                file_moves.append((source, destination))
+                row[column] = file_name
+                file_moves.append((source, gse_folder / file_name))
             samplesheet_rows.append(row)
         # runs of different cells in one sample would merge two channels whose cell barcodes collide
         if len(cell_libraries) > 1:
@@ -277,7 +276,7 @@ def write_readme(gse, gse_runs, samplesheet_rows, gse_folder):
         f"and sorted into this folder with organize_fetchngs.py (scrnaseq_pipeline, commit {commit.stdout.strip()})",
         f"by {getpass.getuser()} on {datetime.date.today()}.",
         "",
-        "samplesheet.csv   one row per sequencing run: sample (GSM), FASTQ paths, protocol,",
+        "samplesheet.csv   one row per sequencing run: sample (GSM), FASTQ file names, protocol,",
         "                  SRA metadata and BioSample attributes (sample_* columns)",
         "*.fastq.gz        the FASTQs chosen during sorting",
         "",
@@ -298,11 +297,9 @@ def main():
         args.fetchngs / "samplesheet" / "samplesheet.csv", dtype=str, keep_default_na=False
     )
     samplesheet_columns = list(fetchngs_samplesheet.columns.drop(DROPPED_COLUMNS))
-    # we need absolute paths in the samplesheet
-    destination = args.destination.resolve()
 
     for gse, gse_runs in fetchngs_samplesheet.groupby("study_alias"):
-        gse_folder = destination / gse
+        gse_folder = args.destination / gse
         if (gse_folder / "samplesheet.csv").exists():
             print(f"{gse}: already organized, skipped")
             continue
