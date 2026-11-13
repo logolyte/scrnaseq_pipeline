@@ -55,7 +55,7 @@ def submit(step, command, launch_dir, after, outdir):
     options += SLURM_OPTIONS[step].split()
     if after:
         options += ["--dependency=afterok:" + ":".join(after), "--kill-on-invalid-dep=yes"]
-    result = subprocess.run(["sbatch", *options, "--wrap", command], capture_output=True, text=True, check=True)
+    result = subprocess.run(["sbatch", *options, "--wrap", command], stdout=subprocess.PIPE, text=True, check=True)
     job_id = result.stdout.strip()
     print(f"{step}: {job_id}")
     return job_id
