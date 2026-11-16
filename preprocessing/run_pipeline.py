@@ -13,7 +13,7 @@ import yaml
 PIPELINE_DIR = Path(__file__).resolve().parent
 SCRNASEQ = "nf-core/scrnaseq -r 4.2.0"
 # scdownstream has no releases yet
-SCDOWNSTREAM = "nf-core/scdownstream -r 0048567589248aac5669ffd0151b8f6d15417804"
+SCDOWNSTREAM = "nf-core/scdownstream -r d9264b35ed88b648baf157d76bd9b261344fb585"
 # the Nextflow jobs run only the driver; the tasks are separate jobs
 SLURM_OPTIONS = {
     "scrnaseq": "--cpus-per-task=2 --mem=8G --time=72:00:00",

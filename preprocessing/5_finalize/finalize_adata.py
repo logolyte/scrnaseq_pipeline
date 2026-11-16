@@ -84,18 +84,14 @@ def add_neighbors(adata, path):
     }
 
 
-def add_doublet_scores(adata, scdownstream_results):
-    """Adds the scDblFinder score from the per-sample files, which still hold the removed doublets."""
-    scores = []
-    for path in (scdownstream_results / "02_quality_control" / "doublet_detection" / "scdblfinder").glob(
-        "*_scdblfinder.h5ad"
-    ):
-        scores.append(read_h5ad_element(path, "obs")["scdblfinder_score"])
-    scores = pd.concat(scores)
-    missing = adata.obs_names.difference(scores.index)
-    if len(missing):
-        raise ValueError(f"{len(missing)} cells have no scDblFinder score")
-    adata.obs["doublet_score"] = scores.reindex(adata.obs_names).to_numpy(dtype=np.float64)
+def add_doublet_score(adata):
+    """Keeps the scDblFinder score as obs['doublet_score'] and drops the other scDblFinder columns."""
+    adata.obs["doublet_score"] = adata.obs["scDblFinder.score"]
+    scdblfinder_columns = []
+    for column in adata.obs.columns:
+        if column.lower().startswith("scdblfinder"):
+            scdblfinder_columns.append(column)
+    adata.obs = adata.obs.drop(columns=scdblfinder_columns)
 
 
 def add_count_metrics(adata):
@@ -225,7 +221,7 @@ def main():
     adata.obs = adata.obs.drop(columns=DROP_OBS)
     rename_keys(adata)
     add_neighbors(adata, args.outdir / NEIGHBORS_H5AD)
-    add_doublet_scores(adata, results / "scdownstream")
+    add_doublet_score(adata)
     add_count_metrics(adata)
     if config["marker_genes"]:
         add_cell_types(adata, results / "cellassign" / "cell_types.tsv")
