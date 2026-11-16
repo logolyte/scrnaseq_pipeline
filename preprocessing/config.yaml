@@ -14,21 +14,30 @@ cache_dir: TODO      # Nextflow home, singularity cache and the images setup.sh 
 # samplesheet columns copied to obs of the final h5ad; a column the samplesheet lacks is skipped
 metadata_columns: [sample_title, sample_genotype, sample_sex, sample_age]
 
-# curate_samples.py asks sc or sn and the run uses that set.
-# qc: scdownstream's cell filters; values not given here are the lenient defaults of prepare_scdownstream.py.
+# scdownstream's filters of every sample. Lenient on purpose: only empty droplets and debris are removed.
 # *_nmads: outliers by that many median absolute deviations per sample, 0 = off
+qc:
+  min_genes: 200
+  min_counts_cell: 200
+  min_cells: 0
+  min_counts_gene: 0
+  max_mito_percentage: 100
+  min_ribo_percentage: 0
+  max_hb_percentage: 100
+  log1p_total_counts_nmads: 0
+  log1p_n_genes_by_counts_nmads: 0
+  pct_counts_in_top_20_genes_nmads: 0
+  pct_counts_mt_nmads: 0
+
+# curate_samples.py asks sc or sn and the run uses that set; its qc overrides the values above.
 modes:
   sc:
     star_feature: GeneFull_Ex50pAS
     qc:
-      min_genes: 200
-      min_counts_cell: 200
       max_mito_percentage: 15
   sn:
     star_feature: GeneFull_Ex50pAS
     qc:
-      min_genes: 200
-      min_counts_cell: 200
       max_mito_percentage: 5
 
 # marker gene YAML for CellAssign, relative to preprocessing/; empty to skip cell types
