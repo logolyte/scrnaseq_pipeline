@@ -19,16 +19,11 @@ metadata_columns: [sample_title, sample_genotype, sample_sex, sample_age]
 # *_nmads: outliers by that many median absolute deviations per sample, 0 = off
 modes:
   sc:
-    star_feature: TODO
+    star_feature: GeneFull_Ex50pAS
     qc:
-      min_genes: TODO
-      min_counts_cell: TODO
-      max_mito_percentage: TODO
-      min_ribo_percentage: TODO
-      log1p_total_counts_nmads: TODO
-      log1p_n_genes_by_counts_nmads: TODO
-      pct_counts_in_top_20_genes_nmads: TODO
-      pct_counts_mt_nmads: TODO
+      min_genes: 200
+      min_counts_cell: 200
+      max_mito_percentage: 15
   sn:
     star_feature: GeneFull_Ex50pAS
     qc:
