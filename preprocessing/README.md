@@ -1,39 +1,40 @@
 # Preprocessing
 
-Takes one samplesheet of FASTQs to a preprocessed AnnData with cell types, as a chain of Slurm jobs.
-Works on in-house data and on the samplesheets of `public_data/`.
+Turns one samplesheet of FASTQs into a preprocessed AnnData with cell types.
+The steps run as a chain of Slurm jobs.
+It works on in-house data and on the samplesheets written by `public_data/`.
 
 ```
 samplesheet.csv                      one row per sequencing run: sample, fastq_1, fastq_2, protocol, metadata
    │
-   │  1_curate: you choose the samples to preprocess and whether they are sc or sn
+   │  1_curate: you choose the samples and the mode (sc or sn)
    ▼
-<outdir>/samplesheet.csv             the chosen runs and the metadata columns of config.yaml
-<outdir>/config.yaml                 a copy of config.yaml with your answers; every later step reads it
+<outdir>/samplesheet.csv             the runs of the chosen samples
+<outdir>/config.yaml                 a copy of config.yaml with your choices; every later step reads it
    │
-   │  2_scrnaseq: STARsolo
+   │  2_scrnaseq: STARsolo counts the reads per gene and cell barcode
    ▼
-results/starsolo/                    raw and EmptyDrops-filtered matrix per sample
+results/starsolo/                    one count matrix per sample
    │
-   │  3_scdownstream: CellBender priors, then CellBender → decontX → QC → scDblFinder → PCA, UMAP, Leiden
+   │  3_scdownstream: finds the cells, removes ambient RNA and doublets, then PCA, UMAP and clusters
    ▼
-results/scdownstream/                one h5ad of all samples
+results/scdownstream/                one h5ad with all samples
    │
-   │  4_cellassign: cell types from marker genes (and 4_velocity_decontx with run_velocyto)
+   │  4_cellassign: cell types from marker genes
    ▼
-results/cellassign/                  cell type of every cell
+results/cellassign/                  the cell type of every cell
    │
-   │  5_finalize
+   │  5_finalize: puts everything into one file
    ▼
-results/final/<name>.h5ad            log1p in X, raw and decontX counts, cell types, sample metadata
+results/final/merged.h5ad            the result
 ```
 
-Steps 2–5 are submitted as Slurm jobs, each starting when the ones it needs have finished, and `run_pipeline.py` returns.
-Start the next dataset right away with another outdir.
+`run_pipeline.py` submits steps 2–5 as Slurm jobs and returns.
+Each job starts when the jobs it needs have finished, so you can start the next dataset right away with another outdir.
 
 ## 1. Set up
 
-Once, from the repository root:
+Do this once, from the repository root:
 
 1. Fill in the TODOs of `preprocessing/config.yaml`.
 2. Create the conda environment `scrnaseq` and build our container image into `<cache_dir>/containers/`:
@@ -41,13 +42,15 @@ Once, from the repository root:
    bash setup.sh <cache_dir of config.yaml>
    ```
 
-| Image | Why our own |
-|---|---|
-| `containers/cellbender/` | CellBender 0.4.0: the module's image (0.3.2) does not run on H100 GPUs |
+The only image we build ourselves is CellBender 0.4.0 (`containers/cellbender/`).
+The image that comes with nf-core/scdownstream has CellBender 0.3.2, which does not run on H100 GPUs.
 
 ## 2. Write the samplesheet
 
-One row per sequencing run; runs of one sample share `sample` and must have the same protocol and metadata. `protocol` is the scrnaseq `--protocol`, e.g. `10XV3`. FASTQ paths are absolute or relative to the samplesheet folder:
+Write one row per sequencing run.
+Runs of the same sample have the same `sample` name and must have the same protocol and metadata.
+`protocol` is the `--protocol` of nf-core/scrnaseq, e.g. `10XV3`.
+FASTQ paths can be absolute or relative to the folder of the samplesheet.
 
 ```
 sample,fastq_1,fastq_2,protocol,sample_genotype
@@ -56,46 +59,65 @@ WT_1,/data/WT_1_L002_R1.fastq.gz,/data/WT_1_L002_R2.fastq.gz,10XV3,WT
 KO_1,/data/KO_1_L001_R1.fastq.gz,/data/KO_1_L001_R2.fastq.gz,10XV3,KO
 ```
 
-`public_data/organize_fetchngs.py` writes this format for GEO studies. The metadata columns listed in `metadata_columns` of `config.yaml` go to obs of the final h5ad. In this example, `sample_genotype` is a metadata column.
+For GEO studies, `public_data/organize_fetchngs.py` writes this file for you.
+
+Any other column is sample metadata, like `sample_genotype` in this example.
+The columns you list in `metadata_columns` of `config.yaml` are copied to obs of the final h5ad.
 
 ## 3. Start a run
 
-On the login node, with `scrnaseq` active:
+On the login node, with the `scrnaseq` environment active:
 
 ```bash
 python preprocessing/run_pipeline.py <samplesheet.csv> <outdir>
 ```
 
-It shows the samples with their metadata and asks:
+The script shows the samples with their metadata and asks:
 
 | question | answer | meaning |
 |---|---|---|
-| Samples | `1,3,5`, `1-5` | these samples |
-| | Enter | all samples |
+| Samples | `1,3,5`, `1-5` | take these samples |
+| | Enter | take all samples |
 | Take GSM1, GSM2? | Enter | yes |
 | | anything else | choose again |
-| sc or sn | `sc` / `sn` | cells / nuclei: the settings of `modes` in `config.yaml` (STAR features, QC) |
+| Mode (sc, sn) | `sc` / `sn` | cells or nuclei; each mode has its own settings under `modes` in `config.yaml` |
 
-Then it submits the jobs and prints their IDs. Logs are in `<outdir>/slurm_logs/`.
+To skip the questions, add `--mode sc` or `--mode sn`. The run then takes all samples of the samplesheet.
 
-After a failure, rerun the same command: it does not ask again (the copy of the config exists), and the Nextflow steps continue with `-resume`.
-Editing `preprocessing/config.yaml` does not change a run already started, but the code of the repository is read by each job when it starts: do not change it while runs are queued.
+The script then submits the jobs and prints their IDs. The log of each step is in `<outdir>/slurm_logs/`.
+
+If a run fails, fix the problem and run the same command again.
+It does not ask the questions again, and the Nextflow steps continue where they stopped.
+
+Each run has its own copy of `config.yaml`, so later edits of `preprocessing/config.yaml` do not change a run that has already started.
+The code is different: every job reads it when it starts, so do not change the repository while jobs are waiting in the queue.
 
 ## 4. Results
 
 ```
 <outdir>/
-├── README.txt, config.yaml, samplesheet.csv   from 1_curate
-├── scrnaseq/, velocyto/             launch folders of Nextflow: .nextflow, params.yaml, work/ (delete when done)
-├── scdownstream/                    launch folder: params.yaml, samplesheet.csv, cellbender_priors.tsv, work/
-├── slurm_logs/
+├── README.txt                       what was run, by whom and on which samples
+├── config.yaml, samplesheet.csv     the settings and samples of this run
+├── slurm_logs/                      one log per step
+├── scrnaseq/, scdownstream/         Nextflow launch folders with work/ (delete them when the run is done)
 └── results/
-    ├── starsolo/                    Solo.out, mtx_conversions/<sample>/<sample>_{raw,filtered}_matrix.h5ad
-    ├── scdownstream/                09_finalized/ and the intermediates 5_finalize reads
-    ├── cellassign/                  cell_types.tsv, markers.yaml
-    ├── velocyto/, velocyto_decontx/ with run_velocyto
-    └── final/<name>.h5ad            the final AnnData
+    ├── starsolo/                    STARsolo output and the count matrices of each sample
+    ├── scdownstream/                QC report, plots and tables of nf-core/scdownstream
+    ├── cellassign/                  cell_types.tsv: the cell type and its probability for every cell
+    └── final/merged.h5ad            the final AnnData
 ```
+
+The final h5ad contains:
+
+| Where | What |
+|---|---|
+| `X` | normalised counts (log1p) |
+| `layers['raw_counts']` | the counts from STARsolo |
+| `layers['ambient_corrected_decontx']` | the counts after decontX removed ambient RNA; all analysis steps use these |
+| `obs` | QC metrics, `doublet_score`, `ambient_fraction_removed`, the clusters `leiden_0.25`, `leiden_0.5` and `leiden_1.0`, `cell_type`, `cell_type_probability` and your metadata columns |
+| `obsm` | `X_pca`, `X_umap` and `cellassign_probabilities` (the probability of every cell type) |
+| `obsp` | the neighbour graph behind the UMAP and the clusters |
+| `uns['pipeline']` | the settings and software versions of the run |
 
 ## 5. Copy to storage
 
@@ -120,19 +142,35 @@ Add `-n --stats` to only list the files and their total size.
 
 ## What each step does
 
-| Step | Settings |
-|---|---|
-| 2_scrnaseq | STARsolo with `star_feature` of the mode: `GeneFull_Ex50pAS` (exons + introns) for both sc and sn; `EmptyDrops_CR` cell calling, Cell Ranger UMI dedup (`1MM_CR`) and multi-gene UMI filtering |
-| 3_scdownstream | `prepare_scdownstream.py` gives scdownstream only the **raw** matrix per sample, so CellBender calls the cells, with expected cells and total droplets per sample from `cellbender_priors.py`; QC thresholds = the `qc` of `config.yaml` + the `qc` of the mode. scdownstream: CellBender (GPU) → decontX (empty droplets as background) → QC → scDblFinder → log1p, PCA on the 4000 genes with the highest binomial deviance, kNN graph on 30 PCs, UMAP, Leiden; all on the decontX counts |
-| 4_cellassign | CellAssign trained on the marker genes only, on the decontX counts rounded stochastically to integers, size factors from all genes; 5 fits from seeds 0–4, the one with the lowest negative log-likelihood is kept |
-| 4_velocity_decontx | with `run_velocyto`: a second scrnaseq run with `Gene Velocyto`; its spliced/unspliced/ambiguous counts are corrected with one decontX run per sample on the three layers stacked |
-| 5_finalize | `X` = log1p; layers `raw_counts` and `ambient_corrected_decontx`; adds doublet score, ambient fraction removed, raw count metrics, cell types, kNN graph, sample metadata and the run settings (`uns['pipeline']`); simpler key names (see the docstring of `finalize_adata.py`) |
+**2_scrnaseq.** STARsolo aligns the reads and counts them per gene.
+Reads in introns are counted too (`GeneFull_Ex50pAS`, the `star_feature` of the mode in `config.yaml`).
+Cell calling and UMI counting follow Cell Ranger.
+
+**3_scdownstream.** First, `prepare_scdownstream.py` estimates for each sample how many cells and droplets CellBender should expect.
+Then nf-core/scdownstream runs on each sample:
+
+1. CellBender decides which barcodes are cells (on a GPU).
+2. decontX removes ambient RNA.
+3. Cells that fail the QC thresholds of `config.yaml` are removed.
+4. scDblFinder finds doublets, and they are removed.
+
+After that the samples are merged and normalised (log1p).
+PCA uses the 4000 most informative genes (highest binomial deviance).
+The neighbour graph, the UMAP and the Leiden clusters use the first 30 PCs.
+
+**4_cellassign.** CellAssign gives every cell one of the cell types of the marker file (`marker_genes` in `config.yaml`).
+It is fitted five times and the best fit is kept.
+
+**4_velocity_decontx.** Runs only with `run_velocyto: true`.
+A second STARsolo run counts spliced and unspliced reads, and decontX corrects them.
+
+**5_finalize.** Collects everything in the final h5ad and gives scdownstream's keys shorter names.
 
 ## Files
 
 ```
 preprocessing/
-├── config.yaml               reference, Slurm, sc/sn settings, metadata columns, markers
+├── config.yaml               reference, Slurm, QC and mode settings, metadata columns, markers
 ├── run_pipeline.py           starts one run
 ├── 1_curate/                 curate_samples.py
 ├── 2_scrnaseq/               scrnaseq.config, params.yaml
@@ -142,16 +180,34 @@ preprocessing/
 └── 5_finalize/               finalize_adata.py
 ```
 
-The number of a step folder is its order; the two steps 4 run in parallel.
-`params.yaml` of a step holds the nf-core pipeline parameters of every run; `run_pipeline.py` adds the values of the run.
+The number of a step folder is its order. The two steps 4 run at the same time.
+The `params.yaml` of a step holds the nf-core parameters that are the same for every run.
 
-## Notes
+## Good to know
 
-- **Counts:** `raw_counts` holds the STARsolo counts of the cells CellBender called; CellBender only chooses the barcodes. scdownstream's QC columns (`total_counts`, `pct_counts_*`) are on the decontX counts, `total_counts_raw` and `n_genes_by_counts_raw` on `raw_counts`.
-- **CellBender priors:** `expected_cells` = 0.75 × the EmptyDrops cells, which keeps borderline EmptyDrops calls out of the cell prior. `total_droplets` = the barcodes with at least as many UMI as the empty-droplet peak (the tallest peak of the log-UMI histogram of non-EmptyDrops barcodes with ≥ 10 UMI); without a usable peak, EmptyDrops cells + 20,000.
-  Check `slurm_logs/prepare_scdownstream_*.log` and the `warnings` column of `scdownstream/cellbender_priors.tsv` before trusting the cell calls; the codes are explained at the top of `cellbender_priors.py`. The thresholds were tuned on high-ambient mouse kidney nuclei.
-- **QC of sn is lenient:** `min_counts_cell` and `min_genes` 200 remove empty droplets and debris; stricter filtering is left to each analysis. `min_genes` effectively counts raw genes, because decontX's fractional counts keep every detected gene above zero.
-- **Mitochondrial filter:** `max_mito_percentage` of the mode, 5 for nuclei and 15 for cells.
-- **CellAssign has no "other" class:** cells of types missing from the marker list are forced into the closest listed type. List every type you expect and check `cell_type_probability`. A fit can merge two cell types; the job log warns when the 5 fits disagree.
-- **Velocyto counts:** the velocyto run's `X` counts exons only (`Velocyto` needs `Gene`); only its spliced/unspliced/ambiguous layers are used, matched to the scdownstream cells by sample and barcode and to the genes by symbol.
-- **No `--twopassMode Basic`:** a STAR bug breaks it with `GeneFull_Ex50pAS` ([STAR#1533](https://github.com/alexdobin/STAR/issues/1533)).
+**There are two kinds of counts.**
+`raw_counts` are the counts from STARsolo. `ambient_corrected_decontx` are the same counts after decontX.
+CellBender is only used to decide which barcodes are cells; its corrected counts are not kept.
+The QC columns from scdownstream (`total_counts`, `pct_counts_mt`, …) are calculated on the decontX counts.
+`total_counts_raw` and `n_genes_by_counts_raw` are calculated on the raw counts.
+
+**Check the CellBender settings before you trust the number of cells.**
+For every sample the pipeline chooses how many cells and droplets CellBender should expect:
+75% of the cells STARsolo called, and all barcodes down to the peak of empty droplets.
+Look at the `warnings` column of `<outdir>/scdownstream/cellbender_priors.tsv`.
+The codes are explained at the top of `cellbender_priors.py`.
+These rules were tuned on mouse kidney nuclei with a lot of ambient RNA, so look more carefully at other tissues.
+
+**QC is mild on purpose.**
+It removes cells with fewer than 200 genes or 200 counts, and cells with more than 5% (nuclei) or 15% (cells) mitochondrial counts.
+Stricter filtering is left to your analysis.
+You can change the thresholds under `qc` and `modes` in `config.yaml`.
+
+**CellAssign has no "unknown" type.**
+Every cell gets one of the cell types of the marker file, even if its real type is not listed.
+So list every cell type you expect, and look at `cell_type_probability` before you trust a label.
+If none of the other four fits agrees with the best one, `slurm_logs/cellassign_*.log` has a warning.
+
+**Velocyto is off by default.**
+It needs a second alignment of all samples.
+With `run_velocyto: true` the final h5ad also has the layers `spliced`, `unspliced` and `ambiguous` (after decontX) and the same three with `_raw` (before decontX).
