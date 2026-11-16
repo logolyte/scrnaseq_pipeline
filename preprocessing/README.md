@@ -36,7 +36,7 @@ Start the next dataset right away with another outdir.
 Once, from the repository root:
 
 1. Fill in the TODOs of `preprocessing/config.yaml`.
-2. Create the conda environment `scrnaseq` and build our container images into `<cache_dir>/containers/`:
+2. Create the conda environment `scrnaseq` and build our container image into `<cache_dir>/containers/`:
    ```bash
    bash setup.sh <cache_dir of config.yaml>
    ```
@@ -44,7 +44,6 @@ Once, from the repository root:
 | Image | Why our own |
 |---|---|
 | `containers/cellbender/` | CellBender 0.4.0: the module's image (0.3.2) does not run on H100 GPUs |
-| `containers/scdblfinder/` | scDblFinder 1.24.10: the module's 1.24.0 calls 2–3× too few doublets with xgboost ≥ 3.1 ([nf-core/scdownstream#382](https://github.com/nf-core/scdownstream/issues/382)) |
 
 ## 2. Write the samplesheet
 
@@ -91,7 +90,7 @@ Editing `preprocessing/config.yaml` does not change a run already started, but t
 ├── scdownstream/                    launch folder: params.yaml, samplesheet.csv, cellbender_priors.tsv, work/
 ├── slurm_logs/
 └── results/
-    ├── starsolo/                    BAM, Solo.out, mtx_conversions/<sample>/<sample>_{raw,filtered}_matrix.h5ad
+    ├── starsolo/                    Solo.out, mtx_conversions/<sample>/<sample>_{raw,filtered}_matrix.h5ad
     ├── scdownstream/                09_finalized/ and the intermediates 5_finalize reads
     ├── cellassign/                  cell_types.tsv, markers.yaml
     ├── velocyto/, velocyto_decontx/ with run_velocyto
@@ -123,8 +122,8 @@ Add `-n --stats` to only list the files and their total size.
 
 | Step | Settings |
 |---|---|
-| 2_scrnaseq | STARsolo with `star_feature` of the mode: `Gene` (sc) or `GeneFull_Ex50pAS` (sn, exons + introns); `EmptyDrops_CR` cell calling, Cell Ranger UMI dedup (`1MM_CR`) and multi-gene UMI filtering |
-| 3_scdownstream | `prepare_scdownstream.py` gives scdownstream only the **raw** matrix per sample, so CellBender calls the cells, with expected cells and total droplets per sample from `cellbender_priors.py`; QC thresholds = lenient defaults + the `qc` of the mode. scdownstream: CellBender (GPU) → decontX (empty droplets as background) → QC → scDblFinder → log1p, PCA on the 4000 genes with the highest binomial deviance, kNN graph on 30 PCs, UMAP, Leiden; all on the decontX counts |
+| 2_scrnaseq | STARsolo with `star_feature` of the mode: `GeneFull_Ex50pAS` (exons + introns) for both sc and sn; `EmptyDrops_CR` cell calling, Cell Ranger UMI dedup (`1MM_CR`) and multi-gene UMI filtering |
+| 3_scdownstream | `prepare_scdownstream.py` gives scdownstream only the **raw** matrix per sample, so CellBender calls the cells, with expected cells and total droplets per sample from `cellbender_priors.py`; QC thresholds = the `qc` of `config.yaml` + the `qc` of the mode. scdownstream: CellBender (GPU) → decontX (empty droplets as background) → QC → scDblFinder → log1p, PCA on the 4000 genes with the highest binomial deviance, kNN graph on 30 PCs, UMAP, Leiden; all on the decontX counts |
 | 4_cellassign | CellAssign trained on the marker genes only, on the decontX counts rounded stochastically to integers, size factors from all genes; 5 fits from seeds 0–4, the one with the lowest negative log-likelihood is kept |
 | 4_velocity_decontx | with `run_velocyto`: a second scrnaseq run with `Gene Velocyto`; its spliced/unspliced/ambiguous counts are corrected with one decontX run per sample on the three layers stacked |
 | 5_finalize | `X` = log1p; layers `raw_counts` and `ambient_corrected_decontx`; adds doublet score, ambient fraction removed, raw count metrics, cell types, kNN graph, sample metadata and the run settings (`uns['pipeline']`); simpler key names (see the docstring of `finalize_adata.py`) |
@@ -152,7 +151,7 @@ The number of a step folder is its order; the two steps 4 run in parallel.
 - **CellBender priors:** `expected_cells` = 0.75 × the EmptyDrops cells, which keeps borderline EmptyDrops calls out of the cell prior. `total_droplets` = the barcodes with at least as many UMI as the empty-droplet peak (the tallest peak of the log-UMI histogram of non-EmptyDrops barcodes with ≥ 10 UMI); without a usable peak, EmptyDrops cells + 20,000.
   Check `slurm_logs/prepare_scdownstream_*.log` and the `warnings` column of `scdownstream/cellbender_priors.tsv` before trusting the cell calls; the codes are explained at the top of `cellbender_priors.py`. The thresholds were tuned on high-ambient mouse kidney nuclei.
 - **QC of sn is lenient:** `min_counts_cell` and `min_genes` 200 remove empty droplets and debris; stricter filtering is left to each analysis. `min_genes` effectively counts raw genes, because decontX's fractional counts keep every detected gene above zero.
-- **Mitochondrial filter:** not needed for nuclei, where mito reads are close to zero after ambient correction. Cells need one (`max_mito_percentage` or `pct_counts_mt_nmads` in `modes.sc.qc`); in kidney, healthy proximal tubule cells can have 20–50% mito.
+- **Mitochondrial filter:** `max_mito_percentage` of the mode, 5 for nuclei and 15 for cells.
 - **CellAssign has no "other" class:** cells of types missing from the marker list are forced into the closest listed type. List every type you expect and check `cell_type_probability`. A fit can merge two cell types; the job log warns when the 5 fits disagree.
 - **Velocyto counts:** the velocyto run's `X` counts exons only (`Velocyto` needs `Gene`); only its spliced/unspliced/ambiguous layers are used, matched to the scdownstream cells by sample and barcode and to the genes by symbol.
 - **No `--twopassMode Basic`:** a STAR bug breaks it with `GeneFull_Ex50pAS` ([STAR#1533](https://github.com/alexdobin/STAR/issues/1533)).

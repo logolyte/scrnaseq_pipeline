@@ -26,9 +26,9 @@ flowchart LR
 
 ```
 scrnaseq_pipeline/
-├── setup.sh                  creates the conda environment, builds the container images
-├── envs/                     conda environment scrnaseq (+ lock with exact versions)
-├── containers/               custom images of CellBender, scDblFinder and decontX
+├── setup.sh                  creates the conda environment, builds the container image
+├── envs/                     conda environment scrnaseq
+├── containers/               custom image of CellBender
 ├── public_data/              fetchs and organises public sc/sn datasets
 └── preprocessing/            preprocess FASTQ files into final h5ad
 ```
@@ -39,9 +39,9 @@ scrnaseq_pipeline/
 |---|---|---|
 | [nf-core/fetchngs](https://nf-co.re/fetchngs) | 1.13.0 (commit `955c892`) | the `nextflow run` command in `public_data/README.md` |
 | [nf-core/scrnaseq](https://nf-co.re/scrnaseq) | 4.2.0 (commit `3fc17b4`) | `SCRNASEQ` in `preprocessing/run_pipeline.py` |
-| [nf-core/scdownstream](https://nf-co.re/scdownstream) | no release yet: commit `0048567589248aac5669ffd0151b8f6d15417804` on `dev` | `SCDOWNSTREAM` in `preprocessing/run_pipeline.py` |
-| All other packages | exact versions | `envs/scrnaseq.lock.yml` |
-| CellBender 0.4.0, scDblFinder 1.24.10, decontX (celda 1.26.0) | exact package versions | `containers/*/lock.txt` |
+| [nf-core/scdownstream](https://nf-co.re/scdownstream) | no release yet: commit `d9264b35ed88b648baf157d76bd9b261344fb585` on `dev` | `SCDOWNSTREAM` in `preprocessing/run_pipeline.py` |
+| All other packages | exact versions | `envs/scrnaseq.yml` |
+| CellBender 0.4.0 | exact package versions | `containers/cellbender/lock.txt` |
 
 The other tools run in the containers of the nf-core modules, fixed by each pipeline version.
 Every run records the versions it used: `results/*/pipeline_info/` of each pipeline, and `uns['pipeline']` of the final h5ad.
