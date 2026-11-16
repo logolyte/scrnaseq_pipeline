@@ -1,0 +1,1 @@
+Files stored here are copies of nf-core/scrnaseq 4.2.0 assets/whitelist for 10x v2, v3 and v4 chemistries
