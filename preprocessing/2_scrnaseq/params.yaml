@@ -1,3 +1,5 @@
 # nf-core/scrnaseq params of every run; run_pipeline.py adds input, outdir, protocol, star_feature and the reference
 aligner: star
 skip_cellbender: true
+# No step reads the BAM, so it is not copied to results/.
+save_align_intermeds: false
