@@ -45,7 +45,6 @@ Once, from the repository root:
 |---|---|
 | `containers/cellbender/` | CellBender 0.4.0: the module's image (0.3.2) does not run on H100 GPUs |
 | `containers/scdblfinder/` | scDblFinder 1.24.10: the module's 1.24.0 calls 2–3× too few doublets with xgboost ≥ 3.1 ([nf-core/scdownstream#382](https://github.com/nf-core/scdownstream/issues/382)) |
-| `containers/decontx/` | the image of scdownstream's decontX module, for `4_velocity_decontx/` |
 
 ## 2. Write the samplesheet
 
