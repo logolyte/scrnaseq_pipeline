@@ -58,7 +58,7 @@ WT_1,/data/WT_1_L002_R1.fastq.gz,/data/WT_1_L002_R2.fastq.gz,10XV3,WT
 KO_1,/data/KO_1_L001_R1.fastq.gz,/data/KO_1_L001_R2.fastq.gz,10XV3,KO
 ```
 
-`public_data/organize_fetchngs.py` writes this format for GEO studies. The metadata columns listed in `metadata_columns` of `config.yaml` go to obs of the final h5ad.
+`public_data/organize_fetchngs.py` writes this format for GEO studies. The metadata columns listed in `metadata_columns` of `config.yaml` go to obs of the final h5ad. In this example, `sample_genotype` is a metadata column.
 
 ## 3. Start a run
 
@@ -106,7 +106,7 @@ The large intermediate files (BAM, count matrices, h5/h5ad/pkl) stay in the outd
 Of `work/`, only the logs of each task (`.command.*`, `.exitcode`) are copied.
 
 ```bash
-rsync -av --prune-empty-dirs \
+rsync -avPh --prune-empty-dirs \
     --exclude='/*/.nextflow/' \
     --include='/*/work/??/*/.command.*' \
     --include='/*/work/??/*/.exitcode' \
@@ -115,10 +115,10 @@ rsync -av --prune-empty-dirs \
     --exclude='/*/work/**' \
     --exclude='*.bam' --exclude='*.tab' --exclude='*.gz' \
     --exclude='*.h5' --exclude='*.h5ad' --exclude='*.pkl' \
-    <outdir>/ <results>/<GSE>/
+    username@server:/path/to/outdir/ /path/to/new/folder 
 ```
 
-Add `-n --stats` to only list the files and their total size. The outdir on the server can still be resumed until you delete it.
+Add `-n --stats` to only list the files and their total size.
 
 ## What each step does
 
