@@ -100,13 +100,19 @@ def add_neighbors(adata, scdownstream_results, key):
         adata.obsp[name] = obsp[name].tocsr()[order][:, order]
     params = dict(read_h5ad_element(path, "uns/neighbors")["params"])
     params["use_rep"] = "X_pca"
-    adata.uns["neighbors"] = {"connectivities_key": "connectivities", "distances_key": "distances", "params": params}
+    adata.uns["neighbors"] = {
+        "connectivities_key": "connectivities",
+        "distances_key": "distances",
+        "params": params,
+    }
 
 
 def add_doublet_scores(adata, scdownstream_results):
     """Adds the scDblFinder score from the per-sample files, which still hold the removed doublets."""
     scores = []
-    for path in (scdownstream_results / "02_quality_control" / "doublet_detection" / "scdblfinder").glob("*_scdblfinder.h5ad"):
+    for path in (scdownstream_results / "02_quality_control" / "doublet_detection" / "scdblfinder").glob(
+        "*_scdblfinder.h5ad"
+    ):
         scores.append(read_h5ad_element(path, "obs")["scdblfinder_score"])
     scores = pd.concat(scores)
     missing = adata.obs_names.difference(scores.index)
@@ -119,7 +125,9 @@ def add_count_metrics(adata):
     """Adds the total counts and detected genes of the raw counts and the share decontX removed."""
     raw_counts = adata.layers["raw_counts"]
     raw_totals = np.asarray(raw_counts.sum(axis=1), dtype=np.float64).ravel()
-    corrected_totals = np.asarray(adata.layers["ambient_corrected_decontx"].sum(axis=1), dtype=np.float64).ravel()
+    corrected_totals = np.asarray(
+        adata.layers["ambient_corrected_decontx"].sum(axis=1), dtype=np.float64
+    ).ravel()
     adata.obs["total_counts_raw"] = raw_totals
     adata.obs["n_genes_by_counts_raw"] = np.asarray((raw_counts > 0).sum(axis=1)).ravel()
     adata.obs["ambient_fraction_removed"] = 1 - corrected_totals / raw_totals
@@ -129,7 +137,9 @@ def add_cell_types(adata, cell_types_path):
     """Adds the CellAssign cell type and its probability to obs and the probabilities of all types to obsm."""
     table = pd.read_csv(cell_types_path, sep="\t", index_col="cell", dtype={"cell_type": str})
     if set(table.index) != set(adata.obs_names):
-        raise ValueError(f"the cells in {cell_types_path} differ from the finalized h5ad; rerun cellassign.py")
+        raise ValueError(
+            f"the cells in {cell_types_path} differ from the finalized h5ad; rerun cellassign.py"
+        )
     table = table.reindex(adata.obs_names)
     # one column per cell type after 'probability', in marker file order
     cell_type_names = list(table.columns[table.columns.get_loc("probability") + 1 :])
@@ -157,7 +167,9 @@ def add_velocyto(adata, velocyto_dir):
         # get_indexer gives -1 for a missing name, which would silently take the last row
         rows = raw.obs_names.get_indexer(barcodes)
         if (rows < 0).any():
-            raise ValueError(f"{sample}: {(rows < 0).sum()} cells are not in {velocyto_dir}/{sample}_cells.h5ad")
+            raise ValueError(
+                f"{sample}: {(rows < 0).sum()} cells are not in {velocyto_dir}/{sample}_cells.h5ad"
+            )
         raw_counts = raw.X.tocsr()[rows]
         corrected_counts = corrected.X.tocsr()[rows]
         for layer in VELOCYTO_LAYERS:
@@ -165,7 +177,9 @@ def add_velocyto(adata, velocyto_dir):
             symbols = pd.Index(raw.var["gene_symbol"].to_numpy()[layer_columns])
             columns = symbols.get_indexer(adata.var_names)
             if (columns < 0).any():
-                raise ValueError(f"{(columns < 0).sum()} genes have no velocyto counts; were both runs made with the same GTF?")
+                raise ValueError(
+                    f"{(columns < 0).sum()} genes have no velocyto counts; were both runs made with the same GTF?"
+                )
             blocks[layer].append(corrected_counts[:, layer_columns[columns]])
             blocks[f"{layer}_raw"].append(raw_counts[:, layer_columns[columns]])
         contamination[cell_positions] = corrected.obs["decontX_contamination"].to_numpy()[rows]
@@ -199,7 +213,11 @@ def pipeline_info(outdir, input_path):
     """Returns the settings and software versions of the run for uns['pipeline']."""
     scdownstream_info = outdir / "results" / "scdownstream" / "pipeline_info"
     commit = subprocess.run(
-        ["git", "describe", "--always", "--dirty"], cwd=PREPROCESSING_DIR, capture_output=True, text=True, check=True
+        ["git", "describe", "--always", "--dirty"],
+        cwd=PREPROCESSING_DIR,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return {
         "created": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -208,12 +226,16 @@ def pipeline_info(outdir, input_path):
         "config": (outdir / "config.yaml").read_text(),
         "scdownstream_samplesheet": (outdir / "scdownstream" / "samplesheet.csv").read_text(),
         "scdownstream_params": max(scdownstream_info.glob("params_*.json"), key=os.path.getmtime).read_text(),
-        "software_versions": max(scdownstream_info.glob("*software*versions.yml"), key=os.path.getmtime).read_text(),
+        "software_versions": max(
+            scdownstream_info.glob("*software*versions.yml"), key=os.path.getmtime
+        ).read_text(),
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("outdir", type=Path, help="Output folder of the run")
     args = parser.parse_args()
 

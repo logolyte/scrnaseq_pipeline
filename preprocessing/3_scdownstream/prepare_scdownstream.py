@@ -71,7 +71,9 @@ def main():
 
     for priors in priors_rows:
         if priors["warnings"] != "none":
-            print(f"CHECK {priors['sample']}: {priors['warnings']} (the codes are explained in cellbender_priors.py)")
+            print(
+                f"CHECK {priors['sample']}: {priors['warnings']} (the codes are explained in cellbender_priors.py)"
+            )
 
 
 if __name__ == "__main__":

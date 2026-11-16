@@ -17,8 +17,11 @@ import pandas as pd
 import scipy.sparse
 
 LAYERS = ["spliced", "unspliced", "ambiguous"]
-# the same R and celda as scdownstream's decontX module; built by setup.sh
-CONTAINER = Path(os.environ["CONTAINER_DIR"]) / "decontx-celda-1.26.0.sif"
+# The image of scdownstream's decontX module, which the scdownstream step has already downloaded.
+CONTAINER = (
+    Path(os.environ["NXF_SINGULARITY_CACHEDIR"])
+    / "community-cr-prod.seqera.io-docker-registry-v2-blobs-sha256-e4-e438b9343a27be713b293f6187d6473f79075ce269ed20d768820de75b3ad0d4-data.img"
+)
 R_SCRIPT = Path(__file__).resolve().parent / "velocity_decontx.R"
 
 
@@ -67,7 +70,9 @@ def correct_sample(sample, velocyto_path, cellbender_path, output_dir):
     is_cell[cell_rows] = True
     droplet_counts = np.asarray(stacked.sum(axis=1)).ravel()
     background_rows = np.flatnonzero((droplet_counts > 0) & ~is_cell)
-    print(f"{sample}: {len(cell_rows)} cells, {len(background_rows)} background droplets, {len(features)} features")
+    print(
+        f"{sample}: {len(cell_rows)} cells, {len(background_rows)} background droplets, {len(features)} features"
+    )
 
     cells_path = output_dir / f"{sample}_cells.h5ad"
     background_path = output_dir / f"{sample}_background.h5ad"
@@ -77,7 +82,18 @@ def correct_sample(sample, velocyto_path, cellbender_path, output_dir):
     del stacked
 
     binds = f"{output_dir},{R_SCRIPT.parent}"
-    command = ["apptainer", "exec", "--bind", binds, CONTAINER, "Rscript", R_SCRIPT, cells_path, background_path, output_path]
+    command = [
+        "apptainer",
+        "exec",
+        "--bind",
+        binds,
+        CONTAINER,
+        "Rscript",
+        R_SCRIPT,
+        cells_path,
+        background_path,
+        output_path,
+    ]
     subprocess.run(command, check=True)
     background_path.unlink()
 
@@ -92,9 +108,17 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     samples = pd.read_csv(args.outdir / "samplesheet.csv", dtype=str)["sample"].unique()
     for sample in samples:
-        velocyto_path = results / "velocyto" / "star" / "mtx_conversions" / sample / f"{sample}_raw_matrix.h5ad"
+        velocyto_path = (
+            results / "velocyto" / "star" / "mtx_conversions" / sample / f"{sample}_raw_matrix.h5ad"
+        )
         # the cells CellBender called (kept by save_intermediates)
-        cellbender_path = results / "scdownstream" / "02_quality_control" / "empty_droplet_removal" / f"{sample}_subset.h5ad"
+        cellbender_path = (
+            results
+            / "scdownstream"
+            / "02_quality_control"
+            / "empty_droplet_removal"
+            / f"{sample}_subset.h5ad"
+        )
         correct_sample(sample, velocyto_path, cellbender_path, output_dir)
 
 
