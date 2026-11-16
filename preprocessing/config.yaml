@@ -9,7 +9,7 @@ reference:
   star_index: TODO
 
 slurm_account: TODO
-cache_dir: TODO      # e.g. /scratch/$USER/cache: Nextflow home, singularity cache and the images setup.sh builds
+cache_dir: TODO      # Nextflow home, singularity cache and the images setup.sh builds
 
 # samplesheet columns copied to obs of the final h5ad; a column the samplesheet lacks is skipped
 metadata_columns: [sample_title, sample_genotype, sample_sex, sample_age]
@@ -29,6 +29,7 @@ modes:
     qc:
       min_genes: 200
       min_counts_cell: 200
+      max_mito_percentage: 5
 
 # marker gene YAML for CellAssign, relative to preprocessing/; empty to skip cell types
 marker_genes: 4_cellassign/marker_gene_sets/mouse_glomerulus.yaml

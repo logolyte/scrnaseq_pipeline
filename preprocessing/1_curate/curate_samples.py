@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Asks which samples to analyze and whether they are cells (sc) or nuclei (sn).
-Writes their runs to <outdir>/samplesheet.csv and a copy of config.yaml with the answers to <outdir>/config.yaml."""
+Writes their runs to <outdir>/samplesheet.csv, a README.txt and a copy of config.yaml with the answers to <outdir>/config.yaml."""
 
 import argparse
+import datetime
+import getpass
 import re
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -36,6 +39,46 @@ def choose_samples(samples):
         names = ", ".join(chosen_samples["sample"])
         if input(f"Take {names}? (Enter = yes, n = choose again): ").strip() == "":
             return chosen_samples
+
+
+def write_readme(samplesheet_path, samples, chosen_samples, mode, protocol, outdir):
+    """Writes README.txt: the study from the README.txt of public_data next to the samplesheet, if there is one,
+    the chosen samples and settings, by whom and when, and what the folders hold."""
+    lines = []
+    study_readme = samplesheet_path.parent / "README.txt"
+    if study_readme.exists():
+        # the first paragraph: study title, GEO link, organism
+        lines += [study_readme.read_text().split("\n\n")[0], ""]
+    commit = subprocess.run(
+        ["git", "describe", "--always", "--dirty"],
+        cwd=Path(__file__).resolve().parent,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    skipped_samples = samples.loc[~samples["sample"].isin(chosen_samples["sample"]), "sample"]
+    lines += [
+        f"Preprocessed with https://github.com/logolyte/scrnaseq_pipeline (commit {commit.stdout.strip()})",
+        f"by {getpass.getuser()} on {datetime.date.today()}: mode {mode}, protocol {protocol}.",
+        "",
+        f"Samples: {', '.join(chosen_samples['sample'])}",
+        f"Skipped samples: {', '.join(skipped_samples) or 'none'}",
+        "",
+        "config.yaml, samplesheet.csv   settings and runs of this preprocessing",
+        "slurm_logs/                    one log per step",
+        "scrnaseq/, scdownstream/       Nextflow launch folders: params.yaml, .nextflow.log, the logs of each task in work/;",
+        "                               scdownstream/cellbender_priors.tsv: CellBender priors and warnings",
+        "results/*/pipeline_info/       trace, timeline and report of each Nextflow run",
+        "results/starsolo/              FastQC, MultiQC, STAR logs and Solo.out statistics per sample",
+        "results/scdownstream/          QC report, MultiQC, CellBender reports and cell barcodes, QC plots and tables",
+        "results/cellassign/            cell types of all cells, marker genes",
+        "velocyto/, results/velocyto*/  spliced and unspliced counts, only with run_velocyto",
+        "results/final/*.h5ad           the result: log1p in X, raw and decontX counts, cell types, sample metadata",
+        "",
+        "The copy from the server to storage (step 5 of preprocessing/README.md) leaves out BAM, count matrices",
+        "and intermediate h5/h5ad/pkl files.",
+    ]
+    (outdir / "README.txt").write_text("\n".join(lines) + "\n")
 
 
 def main():
@@ -75,8 +118,10 @@ def main():
     args.outdir.mkdir(parents=True, exist_ok=True)
     runs = samplesheet[samplesheet["sample"].isin(chosen_samples["sample"])]
     runs[FASTQ_COLUMNS + metadata_columns].to_csv(args.outdir / "samplesheet.csv", index=False)
+    protocol = chosen_samples["protocol"].iloc[0]
+    write_readme(args.samplesheet, samples, chosen_samples, mode, protocol, args.outdir)
     # written last: run_pipeline.py treats an existing config.yaml as a finished curation
-    run_config = config | {"mode": mode, "protocol": chosen_samples["protocol"].iloc[0]}
+    run_config = config | {"mode": mode, "protocol": protocol}
     (args.outdir / "config.yaml").write_text(yaml.safe_dump(run_config, sort_keys=False))
 
 

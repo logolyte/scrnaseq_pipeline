@@ -87,7 +87,7 @@ Editing `preprocessing/config.yaml` does not change a run already started, but t
 
 ```
 <outdir>/
-├── config.yaml, samplesheet.csv     from 1_curate
+├── README.txt, config.yaml, samplesheet.csv   from 1_curate
 ├── scrnaseq/, velocyto/             launch folders of Nextflow: .nextflow, params.yaml, work/ (delete when done)
 ├── scdownstream/                    launch folder: params.yaml, samplesheet.csv, cellbender_priors.tsv, work/
 ├── slurm_logs/
@@ -98,6 +98,27 @@ Editing `preprocessing/config.yaml` does not change a run already started, but t
     ├── velocyto/, velocyto_decontx/ with run_velocyto
     └── final/<name>.h5ad            the final AnnData
 ```
+
+## 5. Copy to storage
+
+When a run has finished, copy its logs, reports, tables and the final h5ad from the server to your storage.
+The large intermediate files (BAM, count matrices, h5/h5ad/pkl) stay in the outdir on the server until you delete it.
+Of `work/`, only the logs of each task (`.command.*`, `.exitcode`) are copied.
+
+```bash
+rsync -av --prune-empty-dirs \
+    --exclude='/*/.nextflow/' \
+    --include='/*/work/??/*/.command.*' \
+    --include='/*/work/??/*/.exitcode' \
+    --include='/results/final/*.h5ad' \
+    --include='*/' \
+    --exclude='/*/work/**' \
+    --exclude='*.bam' --exclude='*.tab' --exclude='*.gz' \
+    --exclude='*.h5' --exclude='*.h5ad' --exclude='*.pkl' \
+    <outdir>/ <results>/<GSE>/
+```
+
+Add `-n --stats` to only list the files and their total size. The outdir on the server can still be resumed until you delete it.
 
 ## What each step does
 
