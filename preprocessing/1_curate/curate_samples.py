@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Asks which samples to analyze and whether they are cells (sc) or nuclei (sn).
+"""Asks which samples to analyze and which mode of config.yaml to use, e.g. sc (cells) or sn (nuclei).
+With --mode it takes all samples and asks nothing.
 Writes their runs to <outdir>/samplesheet.csv, a README.txt and a copy of config.yaml with the answers to <outdir>/config.yaml."""
 
 import argparse
@@ -85,6 +86,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("samplesheet", type=Path, help="One row per run: sample, fastq_1, fastq_2, protocol, metadata")
     parser.add_argument("outdir", type=Path, help="Output folder of this preprocessing run")
+    parser.add_argument("--mode", help="A mode of config.yaml, e.g. sn; takes all samples without asking")
     args = parser.parse_args()
 
     config = yaml.safe_load(CONFIG.read_text())
@@ -107,11 +109,15 @@ def main():
     samples.index += 1
     print(samples.to_string())
 
-    chosen_samples = choose_samples(samples)
+    if args.mode:
+        chosen_samples = samples
+        mode = args.mode
+    else:
+        chosen_samples = choose_samples(samples)
+        mode = input(f"Mode ({', '.join(config['modes'])}): ").strip()
     # scrnaseq takes one --protocol per run
     if chosen_samples["protocol"].nunique() > 1:
         raise ValueError("the chosen samples have different protocols")
-    mode = input("sc or sn: ").strip()
     if mode not in config["modes"]:
         raise ValueError(f"'{mode}' is not one of {list(config['modes'])}")
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Preprocesses one dataset: asks which samples to take, submits the steps to Slurm as a chain of jobs and returns.
+With --mode it takes all samples and asks nothing.
 Run it on the login node in the scrnaseq environment; rerun it with the same outdir after a failure."""
 
 import argparse
@@ -65,14 +66,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("samplesheet", type=Path, help="One row per run: sample, fastq_1, fastq_2, protocol, metadata")
     parser.add_argument("outdir", type=Path, help="Output folder of this run")
+    parser.add_argument("--mode", help="A mode of config.yaml, e.g. sn; takes all samples without asking")
     args = parser.parse_args()
     outdir = args.outdir.resolve()
 
     # curate_samples.py writes config.yaml last, so an existing one means the samples are chosen
     if not (outdir / "config.yaml").exists():
-        curate_script = PIPELINE_DIR / "1_curate" / "curate_samples.py"
-        subprocess.run([sys.executable, curate_script, args.samplesheet, outdir], check=True)
+        curate_command = [sys.executable, PIPELINE_DIR / "1_curate" / "curate_samples.py", args.samplesheet, outdir]
+        if args.mode:
+            curate_command += ["--mode", args.mode]
+        subprocess.run(curate_command, check=True)
     config = yaml.safe_load((outdir / "config.yaml").read_text())
+    # a rerun keeps the mode of the first run, so a different --mode would be ignored silently
+    if args.mode and args.mode != config["mode"]:
+        raise ValueError(f"--mode {args.mode}, but the run in {outdir} was started with mode {config['mode']}")
 
     # the jobs inherit this environment; Nextflow and the .config files read these variables
     cache_dir = Path(config["cache_dir"])

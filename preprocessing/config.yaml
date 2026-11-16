@@ -29,7 +29,7 @@ qc:
   pct_counts_in_top_20_genes_nmads: 0
   pct_counts_mt_nmads: 0
 
-# curate_samples.py asks sc or sn and the run uses that set; its qc overrides the values above.
+# curate_samples.py asks which of these modes to use; the qc of the mode overrides the values above.
 modes:
   sc:
     star_feature: GeneFull_Ex50pAS
