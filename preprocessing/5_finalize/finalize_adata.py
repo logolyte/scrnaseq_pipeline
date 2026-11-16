@@ -26,19 +26,12 @@ import scipy.sparse
 import yaml
 
 PREPROCESSING_DIR = Path(__file__).resolve().parents[1]
+# The names scdownstream gives its outputs with integration_methods pca.
+FINALIZED_H5AD = Path("results/scdownstream/09_finalized/merged.h5ad")
+NEIGHBORS_H5AD = Path("results/scdownstream/05_cluster_dimred/pca/neighbors/pca-global_neighbors.h5ad")
+EMBEDDING = "pca-global"
 DROP_OBS = ["n_counts", "n_genes", "donor", "batch", "condition", "label"]
 VELOCYTO_LAYERS = ["spliced", "unspliced", "ambiguous"]
-
-
-def finalized_h5ad(outdir):
-    """Returns the path of the h5ad in scdownstream's 09_finalized folder (not the _cellxgene one)."""
-    paths = []
-    for path in (outdir / "results" / "scdownstream" / "09_finalized").glob("*.h5ad"):
-        if not path.name.endswith("_cellxgene.h5ad"):
-            paths.append(path)
-    if len(paths) != 1:
-        raise ValueError(f"expected one finalized h5ad, found {paths}")
-    return paths[0]
 
 
 def read_h5ad_element(path, key):
@@ -47,22 +40,10 @@ def read_h5ad_element(path, key):
         return anndata.io.read_elem(handle[key])
 
 
-def embedding_key(adata):
-    """Returns scdownstream's key of the embedding, e.g. 'pca-global' from obsm 'X_pca-global_umap'."""
-    keys = []
-    for name in adata.obsm:
-        match = re.fullmatch(r"X_(.+)_umap", name)
-        if match:
-            keys.append(match.group(1))
-    if len(keys) != 1:
-        raise ValueError(f"expected one obsm X_<key>_umap, found {keys}")
-    return keys[0]
-
-
-def rename_clustering(name, key):
+def rename_clustering(name):
     """Renames a clustering key of scdownstream: 'pca-global-0.5_leiden' -> 'leiden_0.5',
     'pca-global-0.5:entropy' -> 'leiden_0.5_sample_entropy'; other names stay."""
-    match = re.fullmatch(rf"{re.escape(key)}-([0-9.]+)(?:_leiden)?(.*)", name)
+    match = re.fullmatch(rf"{EMBEDDING}-([0-9.]+)(?:_leiden)?(.*)", name)
     if not match:
         return name
     resolution, rest = match.groups()
@@ -71,26 +52,22 @@ def rename_clustering(name, key):
     return f"leiden_{resolution}{rest}"
 
 
-def rename_keys(adata, key):
+def rename_keys(adata):
     """Gives scdownstream's obs, uns, obsm and var keys simpler names."""
-    adata.obs = adata.obs.rename(columns=lambda name: rename_clustering(name, key))
+    adata.obs = adata.obs.rename(columns=rename_clustering)
     for old_name in list(adata.uns):
-        new_name = rename_clustering(old_name, key)
+        new_name = rename_clustering(old_name)
         if new_name != old_name:
             adata.uns[new_name] = adata.uns.pop(old_name)
-    obsm_names = {"X_pca_pca": "X_pca", f"X_{key}_umap": "X_umap"}
+    obsm_names = {"X_pca_pca": "X_pca", f"X_{EMBEDDING}_umap": "X_umap"}
     for old_name, new_name in obsm_names.items():
         adata.obsm[new_name] = adata.obsm.pop(old_name)
     adata.var = adata.var.rename(columns=lambda name: name.removeprefix("deviance:"))
     adata.var = adata.var.drop(columns=["intersection"])
 
 
-def add_neighbors(adata, scdownstream_results, key):
+def add_neighbors(adata, path):
     """Copies the kNN graph scdownstream computed the UMAP and Leiden clusters from."""
-    paths = list((scdownstream_results / "05_cluster_dimred").glob(f"*/neighbors/{key}_neighbors.h5ad"))
-    if len(paths) != 1:
-        raise ValueError(f"expected one {key}_neighbors.h5ad, found {paths}")
-    path = paths[0]
     graph_cells = read_h5ad_element(path, "obs").index
     if set(graph_cells) != set(adata.obs_names):
         raise ValueError(f"the cells in {path} differ from the finalized h5ad")
@@ -241,14 +218,13 @@ def main():
 
     config = yaml.safe_load((args.outdir / "config.yaml").read_text())
     results = args.outdir / "results"
-    input_path = finalized_h5ad(args.outdir)
+    input_path = args.outdir / FINALIZED_H5AD
     adata = anndata.read_h5ad(input_path)
-    key = embedding_key(adata)
 
     adata.X = adata.layers.pop("log1p")
     adata.obs = adata.obs.drop(columns=DROP_OBS)
-    rename_keys(adata, key)
-    add_neighbors(adata, results / "scdownstream", key)
+    rename_keys(adata)
+    add_neighbors(adata, args.outdir / NEIGHBORS_H5AD)
     add_doublet_scores(adata, results / "scdownstream")
     add_count_metrics(adata)
     if config["marker_genes"]:

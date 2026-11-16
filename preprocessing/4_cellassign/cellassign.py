@@ -13,16 +13,18 @@ N_CPUS = os.environ["SLURM_CPUS_PER_TASK"]
 os.environ["OMP_THREAD_LIMIT"] = N_CPUS
 os.environ["OMP_NUM_THREADS"] = N_CPUS
 
-import anndata  # noqa: E402
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-import scipy.sparse  # noqa: E402
-import scvi  # noqa: E402
-import torch  # noqa: E402
-import yaml  # noqa: E402
-from scvi.external import CellAssign  # noqa: E402
+import anndata
+import numpy as np
+import pandas as pd
+import scipy.sparse
+import scvi
+import torch
+import yaml
+from scvi.external import CellAssign
 
 PREPROCESSING_DIR = Path(__file__).resolve().parents[1]
+# The name scdownstream gives its final h5ad.
+FINALIZED_H5AD = Path("results/scdownstream/09_finalized/merged.h5ad")
 # the decontX counts scdownstream analysed
 LAYER = "ambient_corrected_decontx"
 # fits from seeds 0, 1, ...; the one with the lowest negative log-likelihood is kept
@@ -30,17 +32,6 @@ N_RESTARTS = 5
 ROUNDING_SEED = 0
 # fits that give at least this share of cells the same type as the best fit found the same optimum
 AGREEMENT = 0.95
-
-
-def finalized_h5ad(outdir):
-    """Returns the path of the h5ad in scdownstream's 09_finalized folder (not the _cellxgene one)."""
-    paths = []
-    for path in (outdir / "results" / "scdownstream" / "09_finalized").glob("*.h5ad"):
-        if not path.name.endswith("_cellxgene.h5ad"):
-            paths.append(path)
-    if len(paths) != 1:
-        raise ValueError(f"expected one finalized h5ad, found {paths}")
-    return paths[0]
 
 
 def marker_matrix(markers, var_names):
@@ -126,7 +117,7 @@ def main():
     markers_path = PREPROCESSING_DIR / config["marker_genes"]
     # {cell type: [genes]}, e.g. {"Podocyte": ["Nphs1", "Nphs2"]}
     markers = yaml.safe_load(markers_path.read_text())
-    adata = anndata.read_h5ad(finalized_h5ad(args.outdir))
+    adata = anndata.read_h5ad(args.outdir / FINALIZED_H5AD)
     matrix = marker_matrix(markers, adata.var_names)
     print(f"{len(matrix)} marker genes in the data")
 
