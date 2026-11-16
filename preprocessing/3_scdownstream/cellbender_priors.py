@@ -14,11 +14,11 @@ Warning codes of the 'warnings' column (details go to stderr):
   POOR_SEPARATION            cell prior < 3x empty prior: cells and empty droplets overlap; inspect the sample
   SECOND_EMPTY_PEAK          another non-cell peak is at least half as tall; the empty prior may be on the wrong one
   LARGE_TOTAL                total_droplets > EmptyDrops cells + 60000: CellBender is slow and may run out of GPU memory
-  MISSING_BARCODES           some EmptyDrops barcodes are not in the raw matrix
 """
 
 import sys
 
+import anndata
 import h5py
 import numpy as np
 
@@ -37,56 +37,27 @@ LARGE_TOTAL_OFFSET = 60000
 CHUNK = 50_000_000  # matrix entries read at a time
 
 
-def _decode(value):
-    return value.decode() if isinstance(value, bytes) else value
-
-
-def obs_names(f):
-    """Returns the barcodes (obs index) of an open h5ad file."""
-    obs = f["obs"]
-    index = obs[_decode(obs.attrs["_index"])]
-    if isinstance(index, h5py.Group):  # categorical index
-        return index["categories"][:][index["codes"][:]].astype(str)
-    return index[:].astype(str)
+def read_barcodes(path):
+    """Returns the barcodes (obs index) of an h5ad without loading its counts."""
+    with h5py.File(path, "r") as f:
+        return anndata.io.read_elem(f["obs"]).index
 
 
 def umi_per_barcode(path):
-    """Returns the barcodes and the total counts per barcode of an h5ad, reading X in chunks."""
+    """Returns the total counts of every barcode of an h5ad, reading X in chunks."""
     with h5py.File(path, "r") as f:
-        barcodes = obs_names(f)
-        n = len(barcodes)
         X = f["X"]
-        umi = np.zeros(n)
-        if isinstance(X, h5py.Dataset):  # dense
-            step = max(1, CHUNK // max(1, X.shape[1]))
-            for start in range(0, n, step):
-                umi[start : start + step] = X[start : start + step].sum(axis=1)
-            return barcodes, umi
-        encoding = _decode(X.attrs["encoding-type"])
+        encoding = X.attrs["encoding-type"]
+        # scrnaseq writes csc_matrix, where 'indices' holds the barcode of each count
+        if encoding != "csc_matrix":
+            raise ValueError(f"{path}: X has encoding {encoding}, expected csc_matrix")
+        n_barcodes = X.attrs["shape"][0]
         data, indices = X["data"], X["indices"]
-        if encoding == "csc_matrix":  # indices are barcodes
-            for start in range(0, len(data), CHUNK):
-                umi += np.bincount(
-                    indices[start : start + CHUNK], weights=data[start : start + CHUNK], minlength=n
-                )
-        elif encoding == "csr_matrix":  # one row per barcode
-            indptr = X["indptr"][:]
-            row = 0
-            while row < n:
-                end = max(row + 1, int(np.searchsorted(indptr, indptr[row] + CHUNK, "right")) - 1)
-                end = min(end, n)
-                lo, hi = indptr[row], indptr[end]
-                cumulative = np.concatenate([[0.0], np.cumsum(data[lo:hi], dtype=float)])
-                umi[row:end] = cumulative[indptr[row + 1 : end + 1] - lo] - cumulative[indptr[row:end] - lo]
-                row = end
-        else:
-            raise ValueError(f"{path}: X has encoding {encoding}, expected a sparse or dense matrix")
-    return barcodes, umi
-
-
-def emptydrops_barcodes(path):
-    with h5py.File(path, "r") as f:
-        return obs_names(f)
+        umi = np.zeros(n_barcodes)
+        for start in range(0, len(data), CHUNK):
+            end = start + CHUNK
+            umi += np.bincount(indices[start:end], weights=data[start:end], minlength=n_barcodes)
+    return umi
 
 
 def empty_peaks(umi):
@@ -114,15 +85,10 @@ def choose_priors(sample, barcodes, umi, called):
         warnings.append(code)
         print(f"{sample}: WARNING {code}: {message}", file=sys.stderr)
 
-    is_called = np.isin(barcodes, called)
+    is_called = barcodes.isin(called)
     n_emptydrops = len(called)
     if n_emptydrops == 0:
         raise ValueError(f"{sample}: EmptyDrops called no cells")
-    if is_called.sum() != n_emptydrops:
-        warn(
-            "MISSING_BARCODES",
-            f"only {is_called.sum()} of {n_emptydrops} EmptyDrops barcodes are in the raw matrix",
-        )
 
     expected_cells = int(round(EXPECTED_FRACTION * n_emptydrops))
     sorted_umi = np.sort(umi)[::-1]
@@ -209,5 +175,7 @@ def choose_priors(sample, barcodes, umi, called):
 
 def priors_for_sample(sample, raw_path, filtered_path):
     """Returns the settings of one sample from its raw matrix and its EmptyDrops-filtered matrix."""
-    barcodes, umi = umi_per_barcode(raw_path)
-    return choose_priors(sample, barcodes, umi, emptydrops_barcodes(filtered_path))
+    barcodes = read_barcodes(raw_path)
+    umi = umi_per_barcode(raw_path)
+    emptydrops_barcodes = read_barcodes(filtered_path)
+    return choose_priors(sample, barcodes, umi, emptydrops_barcodes)
