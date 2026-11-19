@@ -219,8 +219,7 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
 
 def organize_gsm(gse, gsm, gsm_files, samplesheet_columns, gse_folder):
     """Asks about one GSM and returns its samplesheet rows and file moves."""
-    sample_alias = gsm_files["sample_alias"].iloc[0]
-    print(f"\n{gse} {gsm}, sample_alias: {sample_alias or 'none'}")
+    print(f"\n{gse} {gsm}")
     files = gsm_files.reset_index(drop=True)
     # number the files from 1: the user types these numbers
     files.index += 1
