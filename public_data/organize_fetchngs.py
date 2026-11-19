@@ -219,7 +219,8 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
 
 def organize_gsm(gse, gsm, gsm_files, samplesheet_columns, gse_folder):
     """Asks about one GSM and returns its samplesheet rows and file moves."""
-    print(f"\n{gse} {gsm}")
+    sample_alias = gsm_files["sample_alias"].iloc[0]
+    print(f"\n{gse} {gsm}, sample_alias: {sample_alias or 'none'}")
     files = gsm_files.reset_index(drop=True)
     # number the files from 1: the user types these numbers
     files.index += 1
@@ -241,7 +242,7 @@ def organize_gse(gse, gse_runs, fastq_dir, samplesheet_columns, gse_folder):
     files = list_files(fastq_dir, gse_runs, original_names, CHEMISTRIES)
     samplesheet_rows = []
     file_moves = []
-    for gsm, gsm_files in files.groupby("sample_alias"):
+    for gsm, gsm_files in files.groupby("gsm"):
         gsm_rows, gsm_moves = organize_gsm(gse, gsm, gsm_files, samplesheet_columns, gse_folder)
         samplesheet_rows.extend(gsm_rows)
         file_moves.extend(gsm_moves)
@@ -265,8 +266,8 @@ def write_readme(gse, gse_runs, samplesheet_rows, gse_folder):
     and which GSMs were skipped."""
     taken_gsms = set()
     for row in samplesheet_rows:
-        taken_gsms.add(row["sample_alias"])
-    skipped_gsms = sorted(set(gse_runs["sample_alias"]) - taken_gsms)
+        taken_gsms.add(row["gsm"])
+    skipped_gsms = sorted(set(gse_runs["gsm"]) - taken_gsms)
     commit = subprocess.run(
         ["git", "describe", "--always", "--dirty"],
         cwd=Path(__file__).resolve().parent,
@@ -303,6 +304,8 @@ def main():
     fetchngs_samplesheet = pd.read_csv(
         args.fetchngs / "samplesheet" / "samplesheet.csv", dtype=str, keep_default_na=False
     )
+    # GEO names the runs of a GSM <GSM>_r1, <GSM>_r2, ...; sample_alias, usually the GSM, can be empty
+    fetchngs_samplesheet["gsm"] = fetchngs_samplesheet["run_alias"].str.split("_").str[0]
     samplesheet_columns = list(fetchngs_samplesheet.columns.drop(DROPPED_COLUMNS))
 
     for gse, gse_runs in fetchngs_samplesheet.groupby("study_alias"):
