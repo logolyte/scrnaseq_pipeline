@@ -133,6 +133,8 @@ def main():
         velocyto_params = scrnaseq_params | {
             "outdir": str(outdir / "results" / "velocyto"),
             "star_feature": "Gene Velocyto",
+            # the scrnaseq step already ran FastQC on the same FASTQs
+            "skip_fastqc": True,
         }
         write_params(outdir / "velocyto", scrnaseq_dir / "params.yaml", velocyto_params)
         command = nextflow_command(SCRNASEQ, scrnaseq_dir / "scrnaseq.config")
