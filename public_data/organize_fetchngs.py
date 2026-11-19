@@ -18,6 +18,7 @@ A chemistry module in chemistries/ tells this script:
 import argparse
 import datetime
 import getpass
+import re
 import shutil
 import subprocess
 from collections import defaultdict
@@ -157,7 +158,13 @@ def ask(files, files_by_chemistry):
         "'tenx 1 2, 3 4' = two libraries; '-' = skip this GSM.\n"
         f"Enter = {proposal}\n> "
     )
-    return input(prompt).strip() or proposal
+    while True:
+        # one space between words, e.g. 'tenx  1 2' -> 'tenx 1 2'
+        answer = " ".join(input(prompt).split()) or proposal
+        problem = answer_problem(answer, files_by_chemistry)
+        if problem is None:
+            return answer
+        print(f"Invalid answer: {problem}")
 
 
 def parse_answer(answer):
@@ -168,8 +175,38 @@ def parse_answer(answer):
     libraries = []
     for library_text in numbers_text.split(","):
         file_numbers = [int(number) for number in library_text.split()]
-        libraries.append(list(batched(file_numbers, unit_size, strict=True)))
+        libraries.append(list(batched(file_numbers, unit_size)))
     return chemistry_name, libraries
+
+
+def answer_problem(answer, files_by_chemistry):
+    """Returns why the answer cannot be used, e.g. 'unknown chemistry 1', or None if it can."""
+    if answer == "-":
+        return None
+    if not re.fullmatch(r"\w+ \d+( \d+)*( ?, ?\d+( \d+)*)*", answer):
+        return "type a chemistry and file numbers, e.g. 'tenx 1 2, 3 4'"
+    chemistry_name = answer.split()[0]
+    if chemistry_name not in CHEMISTRIES:
+        return f"unknown chemistry {chemistry_name}; known: {', '.join(CHEMISTRIES)}"
+    layout = CHEMISTRIES[chemistry_name].LAYOUT
+    files = files_by_chemistry[chemistry_name]
+    _, libraries = parse_answer(answer)
+    for units in libraries:
+        cell_libraries = set()
+        for unit in units:
+            if len(unit) != len(layout):
+                return f"{list(unit)}: type {len(layout)} files per run ({' '.join(layout.values())})"
+            if not set(unit) <= set(files.index):
+                return f"{list(unit)}: no such file numbers"
+            unit_files = files.loc[list(unit)]
+            # the files of one samplesheet row must come from the same reads
+            if unit_files["read_count"].nunique() > 1:
+                return f"{list(unit)}: files with different read counts"
+            cell_libraries.update(unit_files["library"])
+        # runs of different cells in one sample would merge two channels whose cell barcodes collide
+        if len(cell_libraries) > 1:
+            return f"the runs of one library have different cells (libraries {sorted(cell_libraries)})"
+    return None
 
 
 def library_names(gsm, libraries):
@@ -189,15 +226,9 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
         if chemistry.ASK_SAMPLE:
             prompt = f"Sample for {library_name}; type the same for libraries of one sample. Enter = {library_name}\n> "
             sample = input(prompt).strip() or library_name
-        # library numbers of the typed runs in the chemistry table
-        cell_libraries = set()
         for lane, unit in enumerate(units, start=1):
             # a list, because .loc reads a tuple as (row, column)
             unit_files = files.loc[list(unit)]
-            # the files the user typed for one row must come from the same reads
-            if unit_files["read_count"].nunique() > 1:
-                raise ValueError(f"{list(unit_files['file'])} have different read counts")
-            cell_libraries.update(unit_files["library"])
             first_file = unit_files.iloc[0]
             row = first_file[samplesheet_columns + chemistry.SAMPLESHEET_COLUMNS].to_dict()
             # SRA marks R1 and R2 uploaded as separate runs as SINGLE
@@ -211,9 +242,6 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
                 row[column] = file_name
                 file_moves.append((source, gse_folder / file_name))
             samplesheet_rows.append(row)
-        # runs of different cells in one sample would merge two channels whose cell barcodes collide
-        if len(cell_libraries) > 1:
-            raise ValueError(f"{library_name}: the typed runs have different cells (libraries {sorted(cell_libraries)})")
     return samplesheet_rows, file_moves
 
 
