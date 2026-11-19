@@ -68,21 +68,28 @@ Files table:
 - `length`: median read length;
 - `phred30_head` / `phred30_tail`: share of bases with Phred ≥ 30 in the first / last quarter of the read;
 - `phred30_bp`: number of read positions where ≥ 70% of bases have Phred ≥ 30;
+- `phred_values`: `binned` if the sequencer rounded the Phred values to a few bins (NextSeq, NovaSeq),
+  `unbinned` (e.g. older HiSeq), or `SRA Lite`: SRA kept one quality per read, so `phred30_*` mean nothing;
+- `flowcell`: the flowcell ID from the read names, empty if SRA dropped them. Different flowcells
+  mean different sequencing runs;
 - `original_names`: file names as the authors uploaded them to SRA.
+
+The instrument model from SRA is printed above the table.
 
 tenx table:
 - `role`: R1, R2 or I (index, ≤ 10 bp);
 - `protocol`: the 10x version whose whitelist matches best;
 - `wl`: share of reads whose first 16 nt are in that whitelist; R1 is the read with the highest `wl`;
 - `tso`: share of reads with the TSO right after the UMI, a sign of 10x 5';
-- `library`: runs with the same cells, i.e. sharing at least half of their 1000 most frequent cell barcodes,
+- `library`: runs with the same cells, i.e. sharing at least a fifth of their 1000 most frequent cell barcodes,
   are one library.
 
 No proposal if `wl` < 0.75, if R1 is shorter than cell barcode + UMI, or if `tso` ≥ 0.1.
 
 When a GSE is done, its R1/R2 move to `DATASET/<GSE>/` with `samplesheet.csv`: one row per run, `sample` = GSM
 (GSM_LIB_1, GSM_LIB_2, … if a GSM has several libraries), `protocol`, the fetchngs columns and the BioSample attributes from SRA as `sample_*` columns
-(e.g. `sample_genotype`). A GSE that already has a samplesheet is skipped.
+(e.g. `sample_genotype`). `instrument_model` and `flowcell` hold the values of all runs of the sample,
+joined by `; `, so they can go to the final h5ad as batch covariates. A GSE that already has a samplesheet is skipped.
 
 Then run `preprocessing/run_pipeline.py DATASET/<GSE>/samplesheet.csv <outdir>`; choose the `sample_*` columns for the final h5ad in `metadata_columns` of `preprocessing/config.yaml`.
 

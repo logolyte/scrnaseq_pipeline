@@ -28,6 +28,12 @@ if PROCESSES is None:
 PHRED30_CODE = 30 + 33
 # a read position counts as good when at least 70% of its bases have Phred >= 30
 MIN_PHRED30_SHARE = 0.7
+# N bases get Phred 0-2; they are missing from some files, so they do not count as a quality bin
+MAX_NO_CALL_CODE = 2 + 33
+# sequencers that bin quality scores write at most 8 Phred values, e.g. NextSeq 500: 14 21 27 32 36
+MAX_QUALITY_BINS = 8
+# SRA Lite keeps one quality per read: 30 if the read passed the sequencer's filter, else 3
+SRA_LITE_PHRED = {3, 30}
 
 
 def fetch_run_metadata(run_accessions):
@@ -52,8 +58,8 @@ def fetch_run_metadata(run_accessions):
 
 
 def describe_quality(quality_lines):
-    """Measures the share of Phred >= 30 bases in the first and the last quarter of the reads
-    and counts the read positions where most bases have Phred >= 30."""
+    """Measures the share of Phred >= 30 bases in the first and the last quarter of the reads,
+    counts the read positions where most bases have Phred >= 30 and tells whether the Phred values are binned."""
     # one row per read, one column per position; shorter reads are padded with code 0
     codes = np.array(quality_lines, dtype="S").view(np.uint8).reshape(len(quality_lines), -1)
     has_base = codes > 0
@@ -62,11 +68,34 @@ def describe_quality(quality_lines):
     phred30_first_quarter = is_phred30[:, :quarter].sum() / has_base[:, :quarter].sum()
     phred30_last_quarter = is_phred30[:, -quarter:].sum() / has_base[:, -quarter:].sum()
     phred30_by_position = is_phred30.sum(axis=0) / has_base.sum(axis=0)
+
+    phred_in_use = set((np.unique(codes[codes > MAX_NO_CALL_CODE]) - 33).tolist())
+    if phred_in_use <= SRA_LITE_PHRED:
+        phred_values = "SRA Lite"
+    elif len(phred_in_use) > MAX_QUALITY_BINS:
+        phred_values = "unbinned"
+    else:
+        phred_values = "binned"
     return {
         "phred30_head": round(phred30_first_quarter, 2),
         "phred30_tail": round(phred30_last_quarter, 2),
         "phred30_bp": int((phred30_by_position >= MIN_PHRED30_SHARE).sum()),
+        "phred_values": phred_values,
     }
+
+
+def find_flowcells(headers):
+    """Returns the flowcell IDs in the Illumina read names that SRA kept, e.g. 'HC7VNBGX9',
+    or '' if SRA dropped the read names."""
+    flowcells = set()
+    for header in headers:
+        # fasterq-dump writes '@SRR1.1 NB501337:541:HC7VNBGX9:3:11401:20898:1029 length=8' or '@SRR1.1 length=8'
+        read_name = header.split()[1]
+        # instrument:run:flowcell:lane:tile:x:y
+        name_fields = read_name.split(":")
+        if len(name_fields) == 7:
+            flowcells.add(name_fields[2])
+    return "; ".join(sorted(flowcells))
 
 
 def describe_fastq(path):
@@ -85,6 +114,7 @@ def describe_fastq(path):
         "file": path.name,
         "path": path,
         "length": round(median(lengths)),
+        "flowcell": find_flowcells(lines[0::4]),
     }
     row.update(describe_quality(lines[3::4]))
     return row, sequences

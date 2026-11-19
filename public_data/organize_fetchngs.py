@@ -39,9 +39,13 @@ TABLE_COLUMNS = [
     "phred30_head",
     "phred30_tail",
     "phred30_bp",
+    "phred_values",
+    "flowcell",
     "read_count",
     "original_names",
 ]
+# signs of the sequencing run, written to the samplesheet for every sample: all values of its runs, joined by '; '
+BATCH_COLUMNS = ["instrument_model", "flowcell"]
 DROPPED_COLUMNS = ["base_count", "fastq_md5", "fastq_bytes", "fastq_ftp", "fastq_galaxy", "fastq_aspera"]
 # runs sharing at least this share of their most frequent cell barcodes have the same cells.
 SAME_CELLS = 0.2
@@ -226,6 +230,15 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
         if chemistry.ASK_SAMPLE:
             prompt = f"Sample for {library_name}; type the same for libraries of one sample. Enter = {library_name}\n> "
             sample = input(prompt).strip() or library_name
+        library_file_numbers = []
+        for unit in units:
+            library_file_numbers.extend(unit)
+        library_files = files.loc[library_file_numbers]
+        # e.g. {"instrument_model": "Illumina NextSeq 500", "flowcell": "HC7VNBGX9; HVGMFBGXG"}
+        batch_values = {}
+        for column in BATCH_COLUMNS:
+            # '' is the flowcell of runs whose read names SRA dropped
+            batch_values[column] = "; ".join(sorted(set(library_files[column]) - {""}))
         for lane, unit in enumerate(units, start=1):
             # a list, because .loc reads a tuple as (row, column)
             unit_files = files.loc[list(unit)]
@@ -234,6 +247,7 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
             # SRA marks R1 and R2 uploaded as separate runs as SINGLE
             row["library_layout"] = "PAIRED"
             row["sample"] = sample
+            row.update(batch_values)
             # the user typed the files in LAYOUT order, e.g. R1 then R2
             for (column, role), source in zip(chemistry.LAYOUT.items(), unit_files["path"]):
                 file_name = chemistry.FASTQ_NAME.format(
@@ -247,7 +261,8 @@ def unit_rows(gsm, chemistry, libraries, files, samplesheet_columns, gse_folder)
 
 def organize_gsm(gse, gsm, gsm_files, samplesheet_columns, gse_folder):
     """Asks about one GSM and returns its samplesheet rows and file moves."""
-    print(f"\n{gse} {gsm}")
+    instrument_models = ", ".join(gsm_files["instrument_model"].unique())
+    print(f"\n{gse} {gsm}: {instrument_models}")
     files = gsm_files.reset_index(drop=True)
     # number the files from 1: the user types these numbers
     files.index += 1
@@ -312,6 +327,7 @@ def write_readme(gse, gse_runs, samplesheet_rows, gse_folder):
         f"by {getpass.getuser()} on {datetime.date.today()}.",
         "",
         "samplesheet.csv   one row per sequencing run: sample (GSM), FASTQ file names, protocol,",
+        "                  instrument_model and flowcell of all runs of the sample,",
         "                  SRA metadata and BioSample attributes (sample_* columns)",
         "*.fastq.gz        the FASTQs chosen during sorting",
         "",
