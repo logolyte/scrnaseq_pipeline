@@ -3,6 +3,7 @@
 import gzip
 import os
 import xml.etree.ElementTree as ET
+from collections import deque
 from itertools import islice
 from multiprocessing import Pool
 from pathlib import Path
@@ -70,10 +71,10 @@ def describe_quality(quality_lines):
 
 def describe_fastq(path):
     """Reads a sample of one FASTQ and returns its metrics and sequences."""
-    first_line = 4 * SKIP_READS
     last_line = 4 * (SKIP_READS + SAMPLE_READS)
     with gzip.open(path, "rt") as file:
-        lines = [line.rstrip() for line in islice(file, first_line, last_line)]
+        sample_lines = deque(islice(file, last_line), maxlen=4 * SAMPLE_READS)
+    lines = [line.rstrip() for line in sample_lines]
     sequences = lines[1::4]
     lengths = [len(sequence) for sequence in sequences]
 

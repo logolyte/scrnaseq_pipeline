@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pandas as pd
 from chemistries import tenx
-from fastq_info import fetch_run_metadata, list_files
+from fastq_info import SKIP_READS, fetch_run_metadata, list_files
 
 CHEMISTRIES = {
     "tenx": tenx,
@@ -105,10 +105,15 @@ def propose(files, layout):
     # file numbers of each library in LAYOUT order, e.g. {1: [1, 2, 3, 4]} for R1 R2 of two runs
     file_numbers_by_library = defaultdict(list)
     for _, spot_files in files.groupby("spots", sort=False):
+        # a run with fewer than SKIP_READS reads is usually a leftover upload; the user can still type it
+        if int(spot_files["read_count"].iloc[0]) < SKIP_READS:
+            continue
         library = spot_files["library"].iloc[0]
         for role in layout.values():
             file_number = spot_files.index[spot_files["role"] == role][0]
             file_numbers_by_library[library].append(file_number)
+    if not file_numbers_by_library:
+        return None, [f"all runs have fewer than {SKIP_READS} reads"]
 
     answers_per_library = []
     for file_numbers in file_numbers_by_library.values():
@@ -119,6 +124,9 @@ def propose(files, layout):
 def ask(files, files_by_chemistry):
     """Shows the files and each chemistry's proposal and returns the user's answer."""
     print(files[TABLE_COLUMNS].to_string())
+    for run, read_count in files[["run_accession", "read_count"]].drop_duplicates().itertuples(index=False):
+        if int(read_count) < SKIP_READS:
+            print(f"{run}: {read_count} reads, fewer than skip_reads ({SKIP_READS}); left out of Enter")
 
     proposals = []
     for chemistry_name, chemistry in CHEMISTRIES.items():
