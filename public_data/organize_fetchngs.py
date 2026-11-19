@@ -43,8 +43,7 @@ TABLE_COLUMNS = [
 ]
 DROPPED_COLUMNS = ["base_count", "fastq_md5", "fastq_bytes", "fastq_ftp", "fastq_galaxy", "fastq_aspera"]
 # runs sharing at least this share of their most frequent cell barcodes have the same cells.
-# Runs of one library share about 80%, different libraries below 1%
-SAME_CELLS = 0.5
+SAME_CELLS = 0.2
 
 
 def shared_barcodes(files, barcode_role):
