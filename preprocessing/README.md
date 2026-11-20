@@ -114,7 +114,7 @@ The final h5ad contains:
 | `X` | normalised counts (log1p) |
 | `layers['raw_counts']` | the counts from STARsolo |
 | `layers['ambient_corrected_decontx']` | the counts after decontX removed ambient RNA; all analysis steps use these |
-| `obs` | QC metrics, `doublet_score`, `ambient_fraction_removed`, the clusters `leiden_0.25`, `leiden_0.5` and `leiden_1.0`, `cell_type`, `cell_type_probability` and your metadata columns |
+| `obs` | QC metrics, `doublet_score`, `ambient_fraction_removed`, the clusters `leiden_0.25`, `leiden_0.5` and `leiden_1.0`, `cell_type`, `cell_type_probability`, `protocol` (the 10x chemistry) and your metadata columns |
 | `obsm` | `X_pca`, `X_umap` and `cellassign_probabilities` (the probability of every cell type) |
 | `obsp` | the neighbour graph behind the UMAP and the clusters |
 | `uns['pipeline']` | the settings and software versions of the run |

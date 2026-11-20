@@ -5,7 +5,7 @@ and writes it to <outdir>/results/final/.
   X       log1p counts; layers raw_counts and ambient_corrected_decontx (with velocyto also spliced,
           unspliced, ambiguous and their _raw versions)
   obs     adds doublet_score, ambient_fraction_removed, total_counts_raw, n_genes_by_counts_raw, cell_type,
-          cell_type_probability, velocity_contamination and the samplesheet metadata; drops scdownstream's
+          cell_type_probability, velocity_contamination, the samplesheet metadata and protocol; drops scdownstream's
           duplicate and placeholder columns
   keys    scdownstream's names are shortened: leiden_<res>, X_umap, X_pca, var columns without 'deviance:'
   obsp    the kNN graph of the UMAP and Leiden clusters; uns['pipeline'] holds the settings and versions
@@ -228,6 +228,7 @@ def main():
     if config["run_velocyto"]:
         add_velocyto(adata, results / "velocyto_decontx")
     add_sample_metadata(adata, args.outdir / "samplesheet.csv")
+    adata.obs["protocol"] = config["protocol"]
     adata.uns["pipeline"] = pipeline_info(args.outdir, input_path)
 
     output_dir = results / "final"

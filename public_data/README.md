@@ -75,6 +75,9 @@ Files table:
 - `original_names`: file names as the authors uploaded them to SRA.
 
 The instrument model from SRA is printed above the table.
+If runs of one instrument model differ in `phred_values`, the model of each run gets its binning,
+e.g. `Illumina NovaSeq 6000 (doubtful, binned_phred)` and `Illumina NovaSeq 6000 (doubtful, unbinned_phred)`:
+SRA's model is wrong for some runs, or the binning was set differently. SRA Lite runs are not compared.
 
 tenx table:
 - `role`: R1, R2 or I (index, ≤ 10 bp);

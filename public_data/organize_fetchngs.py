@@ -278,10 +278,23 @@ def organize_gsm(gse, gsm, gsm_files, samplesheet_columns, gse_folder):
     return unit_rows(gsm, chemistry, libraries, chemistry_files, samplesheet_columns, gse_folder)
 
 
+def mark_doubtful_instruments(files):
+    """Returns the instrument_model of each file, marked where runs of one model differ in binning,
+    e.g. 'Illumina NovaSeq 6000 (doubtful, binned_phred)': SRA's model is wrong for some runs, or the binning was set differently."""
+    # SRA Lite replaced the sequencer's quality values, so it cannot contradict a model
+    is_compared = files["phred_values"] != "SRA Lite"
+    phred_values_per_model = files[is_compared].groupby("instrument_model")["phred_values"].nunique()
+    doubtful_models = phred_values_per_model.index[phred_values_per_model > 1]
+    is_doubtful = is_compared & files["instrument_model"].isin(doubtful_models)
+    marked_models = files["instrument_model"] + " (doubtful, " + files["phred_values"] + "_phred)"
+    return files["instrument_model"].where(~is_doubtful, marked_models)
+
+
 def organize_gse(gse, gse_runs, fastq_dir, samplesheet_columns, gse_folder):
     """Collects the samplesheet rows and file moves of all GSMs of one GSE."""
     original_names, attributes_by_run = fetch_run_metadata(list(gse_runs["run_accession"]))
     files = list_files(fastq_dir, gse_runs, original_names, CHEMISTRIES)
+    files["instrument_model"] = mark_doubtful_instruments(files)
     samplesheet_rows = []
     file_moves = []
     for gsm, gsm_files in files.groupby("gsm"):
