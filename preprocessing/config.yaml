@@ -12,7 +12,7 @@ slurm_account: TODO
 cache_dir: TODO      # Nextflow home, singularity cache and the images setup.sh builds
 
 # samplesheet columns copied to obs of the final h5ad; a column the samplesheet lacks is skipped
-metadata_columns: [sample_title, sample_genotype, sample_sex, sample_age, instrument_model, flowcell]
+metadata_columns: [sample_title, sample_genotype, sample_sex, sample_age, sample_collection_date, instrument_model, flowcell]
 
 # scdownstream's filters of every sample. Lenient on purpose: only empty droplets and debris are removed.
 # *_nmads: outliers by that many median absolute deviations per sample, 0 = off
