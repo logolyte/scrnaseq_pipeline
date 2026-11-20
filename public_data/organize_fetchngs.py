@@ -34,7 +34,6 @@ CHEMISTRIES = {
 }
 TABLE_COLUMNS = [
     "file",
-    "run_accession",
     "length",
     "phred30_head",
     "phred30_tail",
